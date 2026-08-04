@@ -1,0 +1,55 @@
+/* =============================================
+   茉莉陪玩 — 全局主题样式
+   品牌色：茉莉绿 + 茉莉白
+   ============================================= */
+
+:root {
+  --jasmine-green: #7cb342;
+  --jasmine-green-light: #aed581;
+  --jasmine-green-dark: #558b2f;
+  --jasmine-white: #faf8f2;
+  --jasmine-cream: #f5f0e3;
+  --jasmine-gold: #c9a96e;
+  --jasmine-brown: #6d5d4b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 茉莉暖白背景 */
+  background: linear-gradient(135deg, #faf8f2 0%, #f0ece0 50%, #f8f5ed 100%);
+  background-attachment: fixed;
+  color: #4a4a4a;
+  min-height: 100vh;
+}
+
+/* ---------- Element Plus 主题覆盖 ---------- */
+:root {
+  --el-color-primary: #7cb342;
+  --el-color-primary-light-3: #aed581;
+  --el-color-primary-light-5: #c5e1a5;
+  --el-color-primary-light-7: #dcedc8;
+  --el-color-primary-light-8: #e8f5e9;
+  --el-color-primary-light-9: #f1f8e9;
+  --el-color-primary-dark-2: #689f38;
+  --el-color-success: #7cb342;
+  --el-color-warning: #f0a030;
+  --el-color-danger: #e57373;
+}
+
+/* 文字渐变效果类 */
+.gradient-text {
+  background: linear-gradient(135deg, #558b2f, #7cb342, #aed581);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
