@@ -1,16 +1,11 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-
-// https://vite.dev/config/
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
 export default defineConfig({
   plugins: [vue()],
+  build: { target: "es2022" },
   server: {
-    proxy: {
-      // 将 /api 开头的请求代理到后端 3000 端口
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
+    port: 5173,
+    strictPort: true,
+    proxy: { "/api": { target: "http://127.0.0.1:3000", changeOrigin: true } },
   },
-})
+});

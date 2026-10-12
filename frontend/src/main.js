@@ -1,12 +1,7 @@
-import { createApp } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
-import App from './App.vue';
-import router from './router/index.js';
-
-const app = createApp(App);
-
-app.use(ElementPlus, { size: 'default' });
-app.use(router);
-
-app.mount('#app');
+import { createApp } from "vue";
+import App from "./App.vue";
+import router from "./router/index.js";
+import "./style.css";
+import { initAuth } from "./lib/api.js";
+await initAuth();
+createApp(App).use(router).mount("#app");
