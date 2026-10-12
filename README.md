@@ -1,45 +1,143 @@
-# 茉莉陪玩 · 三角色服务平台
+# 茉莉陪玩 · MOLI
 
-从原有“入职申请 + 人员展示”升级为客户、陪玩、管理者共用的全栈平台。保留茉莉绿与暖白品牌，提供响应式页面和完整的预约履约流程。
+**找到合拍的游戏搭子，让每一场游戏都有值得期待的陪伴。**
 
-## 已实现
+茉莉陪玩是面向 **客户、陪玩与管理者** 的全栈电竞陪练服务平台。从原有的入职申请与人员展示系统重构而来，保留茉莉绿、暖白色与“与君茉莉 · 忘君莫离”的品牌表达，提供桌面和手机端页面。
 
-| 角色 | 功能 |
+[功能概览](#功能概览) · [快速开始](#快速开始) · [演示账号](#演示账号) · [在线支付](#在线支付) · [验证与 CI](#验证与-ci) · [部署与文档](#部署与文档) · [更新说明](CHANGELOG.md)
+
+![首页预览](docs/images/home-preview.png)
+
+<details>
+<summary>查看手机端页面预览</summary>
+
+<img src="docs/images/mobile-preview.png" width="320" alt="茉莉陪玩手机端页面预览" />
+
+</details>
+
+> **项目状态**：三角色重构、本地运行与自动化验证已完成。正式对公众开放前，仍需完成生产部署、真实商户支付联调与运营准备。预览中的人物和资料为演示内容。
+
+## 功能概览
+
+| 角色 | 已实现的功能 |
 | --- | --- |
-| 客户 | 邮箱注册验证、登录和找回密码；游戏/价格/风格筛选；收藏；查看服务与档期；预约；微信或支付宝付款；订单沟通；确认完成；真实订单评价；退款申请；客服工单 |
-| 陪玩 | 提交入驻申请、查看审核结果；工作台；服务与价格管理；每周档期；接单/拒单/开始/结束；订单沟通；收入与结算申请 |
-| 管理者 | 入驻审核；账号与主页管理；订单与原路退款；工单回复；结算登记；公告与评价管理；操作日志 |
+| 客户 | 邮箱注册与验证、登录与找回密码；游戏/价格/关键词筛选；收藏；查看服务与档期；预约付款；订单沟通；确认完成与评价；退款申请；客服工单 |
+| 陪玩 | 入驻申请与审核结果；服务介绍与定价；每周档期；暂停接单；接单、拒单、开始与结束服务；订单沟通；收入明细与结算申请 |
+| 管理者 | 成年身份与技能审核记录；账号与主页管理；订单查看与原路退款；客服工单；结算凭证登记；公告、评价和操作日志 |
 
-支付支持微信 Native、可配置的微信 H5，以及支付宝电脑网站/手机网站支付。密钥未配置时支付和公开预约不会开放。网页回跳不会将订单直接标记为付款成功。
+### 服务流程
 
-## 本地启动
+```mermaid
+flowchart LR
+    A[发现陪玩] --> B[选择服务与档期]
+    B --> C[预约并付款]
+    C --> D[接单与服务]
+    D --> E[客户确认完成]
+    E --> F[真实订单评价]
+    C --> G[退款与客服]
+    D --> G
+```
 
-环境要求：Node.js 24 或更高版本。开发环境默认使用持久化 SQLite，生产环境强制使用 MySQL 8 与 HTTPS。
+- 北京时间预约，服务时长30分钟至4小时，整点或半点开始；待付款时段锁定15分钟。
+- 重叠预约由服务器拒绝；单价、金额与平台服务费在下单时锁定。
+- 评分和成交统计来自已完成订单，不伪造演示评价。
+- 身份与技能需要运营者实际核验；陪玩结算采用人工转账与凭证登记。
+
+## 技术栈
+
+| 层级 | 技术 |
+| --- | --- |
+| 前端 | Vue 3、Vue Router、Vite、Lucide、响应式 CSS |
+| 后端 | Node.js 24、Express、Zod |
+| 数据库 | 开发使用持久化 SQLite；生产使用 MySQL 8 |
+| 支付 | 微信 API v3 Native/H5、支付宝官方 Node.js SDK |
+| 测试 | Node.js Test Runner、Supertest、Playwright |
+| 部署 | Docker Compose、Caddy HTTPS、GitHub Actions |
+
+安全实现包括 scrypt 密码哈希、HttpOnly 会话、角色与订单归属检查、CSRF/来源校验、限流、服务器计价、支付通知验签与幂等记账。
+
+## 快速开始
+
+需要 **Node.js 24 或更高版本**。在仓库根目录统一安装依赖。
+
+### Windows / PowerShell
 
 ```powershell
+git clone https://github.com/lyx0415/MOLI_PW.git
+cd MOLI_PW
+git checkout codex/moli-platform-20261012
+
 npm ci
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+}
 npm run db:migrate
 npm run dev
 ```
 
-打开 `http://localhost:5173`。前端 Vite 将 `/api` 代理到后端 `3000` 端口。不要用 `127.0.0.1:5173` 替代已配置的 `PUBLIC_ORIGIN`；如需替换，应同步修改 `.env`。
+### Linux / macOS
 
-### 体验示例资料
+```bash
+git clone https://github.com/lyx0415/MOLI_PW.git
+cd MOLI_PW
+git checkout codex/moli-platform-20261012
 
-在 `.env` 中明确设置 `DEMO_MODE=true`，并为 `DEMO_PASSWORD` 设置一个至少10位、包含字母数字的临时密码，然后运行：
+npm ci
+cp -n .env.example .env
+npm run db:migrate
+npm run dev
+```
+
+打开 **http://localhost:5173**。Vite 将 `/api` 代理到后端 `3000` 端口。访问地址需要与 `PUBLIC_ORIGIN` 一致，更换地址时同步更新配置。开发数据库位于 `data/moli.sqlite`，无需预装 MySQL。
+
+## 演示账号
+
+默认安装没有示例人员。在本地 `.env` 中设置 `DEMO_MODE=true`，并将 `DEMO_PASSWORD` 设为自行选择的临时密码（至少10位，包含英文字母和数字），然后运行：
 
 ```powershell
 npm run demo:seed
 ```
 
-示例账号：`customer@demo.moli.test`、`provider1@demo.moli.test` 至 `provider6@demo.moli.test`、`admin@demo.moli.test`。密码均为你设置的 `DEMO_PASSWORD`。示例人物与插画不是真实人员，界面有演示标识。生产服务器拒绝示例播种；上线应使用全新生产数据库。
+| 角色 | 邮箱 | 入口 |
+| --- | --- | --- |
+| 客户 | `customer@demo.moli.test` | `/account`、`/orders` |
+| 陪玩 | `provider1@demo.moli.test` 至 `provider6@demo.moli.test` | `/studio` |
+| 管理者 | `admin@demo.moli.test` | `/admin` |
+
+演示账号使用你设置的 `DEMO_PASSWORD`。演示播种只允许开发环境，生产应使用全新数据库。插画和资料为示例，不代表真实陪玩照片。
 
 ### 创建真实管理员
 
-在服务器的受保护环境中设置 `ADMIN_EMAIL`、`ADMIN_PASSWORD`、可选 `ADMIN_NAME`，运行 `npm run admin:create`。该命令不会覆盖已有账号。执行后移除 `ADMIN_PASSWORD`，不要把密码写进 Git。
+在受保护的服务器环境中临时设置 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 和可选 `ADMIN_NAME`，运行 `npm run admin:create`。该命令不会覆盖已有账号；初始化后移除临时密码配置。
 
-## 验证
+## 在线支付
+
+- **微信 Native**：桌面展示二维码，使用微信扫码付款。
+- **微信 H5**：商户开通 H5 并登记域名后，手机系统浏览器可以调起支付。
+- **支付宝**：电脑网站与手机网站支付，使用官方 SDK 和 RSA2 验签。
+
+配置商户号、AppID、私钥、验签公钥信息等字段后启用，详见 [支付配置](docs/PAYMENTS.md)。**密钥未配置时，前台在线支付及预约入口不会开放。** 网页回跳不等于付款成功，订单只根据验签通知或签名查单更新；退款按支付渠道的确认结果显示。
+
+微信内置浏览器当前使用扫码方案，尚未实现公众号 OAuth/OpenID/JSAPI。支付测试不进行真实扣款。
+
+## 常用命令
+
+| 命令 | 用途 |
+| --- | --- |
+| `npm run dev` | 同时启动前后端开发服务 |
+| `npm run build` | 前端生产构建 |
+| `npm start` | 启动后端并提供已构建的前端页面 |
+| `npm run db:migrate` | 版本化数据库迁移 |
+| `npm run demo:seed` | 初始化开发演示资料 |
+| `npm run admin:create` | 创建真实管理员 |
+| `npm test` | 后端业务、账号与支付测试 |
+| `npm run test:e2e` | 浏览器业务流程 |
+
+使用 `npm start` 提供页面时，需将 `PUBLIC_ORIGIN` 设为实际访问地址。生产反向代理配置见部署文档。
+
+## 验证与 CI
+
+本次重构验证：**19项后端/支付/邮箱测试**、独立 SQLite/MySQL 8.0.46 回归、**4条浏览器流程**与前端生产构建通过，GitHub Actions CI 通过。npm 官方生产依赖审计为零已知漏洞。
 
 ```powershell
 npm test
@@ -48,36 +146,48 @@ npm run test:e2e
 npm audit --omit=dev --registry=https://registry.npmjs.org
 ```
 
-本地浏览器测试默认使用已安装的 Microsoft Edge。其他平台先运行 `npx playwright install chromium`，再设置 `PLAYWRIGHT_CHANNEL=chromium`。测试使用独立内存数据库和隔离支付适配器，不进行真实扣款；生产入口不加载该适配器。
+浏览器测试默认使用 Microsoft Edge。使用 Chromium 时，先运行 `npx playwright install chromium` 并设置 `PLAYWRIGHT_CHANNEL=chromium`。
 
-真实 MySQL 回归：准备专用测试 MySQL 实例，通过 `TEST_DB_DRIVER=mysql`、`TEST_DB_PORT`、`TEST_DB_USER`、`TEST_DB_PASSWORD` 指定。测试创建并删除随机 `moli_qa_*` 数据库，需要测试实例的建库权限，请勿指向业务生产库。测试不会复用旧业务表。
+MySQL 回归使用专用测试实例，通过 `TEST_DB_DRIVER=mysql`、`TEST_DB_PORT`、`TEST_DB_USER`、`TEST_DB_PASSWORD` 配置。测试需要建库权限，会创建并删除独立的 `moli_qa_*` 数据库。
 
-## 目录
+支付测试使用生成的密钥、受控响应和隔离适配器，不访问真实收款流程。详细范围见 [验收记录](docs/ACCEPTANCE.md)。
+
+## 项目结构
 
 ```text
 backend/
-  app.js                 HTTP 入口、鉴权、CSRF、错误处理
-  lib/                   数据库、配置、校验、订单领域逻辑
-  migrations/            带版本和校验和的数据库迁移
-  payments/              微信 API v3 / 支付宝官方 SDK
-  routes/                账号、发现、业务、管理、支付接口
-  scripts/               管理员创建、迁移、维护、示例播种
-  test/                  API、鉴权、支付与邮箱验证测试
+  app.js                 HTTP、鉴权、CSRF 与错误处理
+  lib/                   配置、校验、数据库和订单领域逻辑
+  migrations/            版本化迁移及校验和
+  payments/              微信 API v3 / 支付宝适配器
+  routes/                账号、发现、业务、管理及支付
+  scripts/               管理员、迁移、维护与演示播种
+  test/                  后端与支付测试
 frontend/src/
-  components/            品牌、插画、服务卡片、分页
-  lib/                   API、账号状态、站点信息
+  components/            品牌、插画、陪玩卡片与分页
+  lib/                   请求、账号及站点状态
   views/                 公开页面与三角色工作台
-deploy/                  HTTPS 网关
+deploy/                  HTTPS 网关配置
 tests/e2e/               浏览器业务流程
 docs/                    架构、支付、部署、迁移与验收
 ```
 
-## 部署与运营
+## 部署与文档
 
-- [部署说明](docs/DEPLOYMENT.md)：Docker Compose、HTTPS、邮件、管理员初始化、备份。
-- [微信与支付宝支付](docs/PAYMENTS.md)：商户配置、回调、查单、退款及真实联调步骤。
-- [架构与业务规则](docs/ARCHITECTURE.md)：权限、订单状态、资金与并发规则。
-- [旧数据迁移](docs/MIGRATION.md)：原始数据保留、账号绑定、上线切换和回退。
-- [验收记录](docs/ACCEPTANCE.md)：已验证范围和剩余外部条件。
+生产需要 MySQL、HTTPS、SMTP、真实运营信息与商户配置。提供的 Docker Compose 使用 Node.js、MySQL 和 Caddy，按单 API 实例部署。
 
-生产版需要运营主体、客服邮箱、SMTP、域名/HTTPS 和商户密钥。微信商户已由项目负责人确认持有，仍需实际配置并完成商户联调。当前代码不能代替公网部署、支付产品开通、真实审核和运营安排。
+| 文档 | 内容 |
+| --- | --- |
+| [部署说明](docs/DEPLOYMENT.md) | Docker、域名/HTTPS、邮件、管理员、备份与运维 |
+| [支付配置](docs/PAYMENTS.md) | 微信/支付宝参数、签名、回调、查单与退款 |
+| [架构说明](docs/ARCHITECTURE.md) | 授权、订单状态、金额、并发与功能边界 |
+| [旧数据迁移](docs/MIGRATION.md) | 数据保留、账号核验、切换与回退 |
+| [验收记录](docs/ACCEPTANCE.md) | 验证结果及上线所需外部条件 |
+| [更新说明](CHANGELOG.md) | 本次重构内容 |
+| [提交说明](docs/COMMIT_MESSAGE.md) | 重构目标、主要变更与验证结果 |
+
+新表使用 `moli_` 前缀，原 `applications`、`players` 表保留。旧陪玩需要注册并核验后绑定新平台，不自动分发默认登录密码。
+
+首版聚焦线上电竞陪练。结算由运营者人工转账；尚未实现自动分账、音视频通话、文件上传或微信内 JSAPI。Docker 与真实商户公网联调需要在目标环境完成。
+
+`.env`、演示数据库、运行日志及商户密钥不在仓库中。历史公开过的旧密码需在原环境更换。
