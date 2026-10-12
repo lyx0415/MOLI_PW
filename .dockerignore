@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+.git
+.claude
+.env*
+secrets
+work
+data
+tests
+backend/test
+test-results
+playwright-report
+*.exe
+*.pem
+*.key

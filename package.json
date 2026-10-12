@@ -1,0 +1,31 @@
+{
+  "name": "moli-platform",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "overrides": {
+    "urllib": "4.9.1"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "start": "node --env-file-if-exists=.env backend/server.js",
+    "test": "node --test backend/test/*.test.js",
+    "test:e2e": "playwright test",
+    "db:migrate": "node --env-file-if-exists=.env backend/scripts/migrate.js",
+    "admin:create": "node --env-file-if-exists=.env backend/scripts/create-admin.js",
+    "demo:seed": "node --env-file-if-exists=.env backend/scripts/seed-demo.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "concurrently": "^10.0.6",
+    "prettier": "^3.9.10",
+    "supertest": "^7.3.1"
+  }
+}

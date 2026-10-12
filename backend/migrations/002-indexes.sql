@@ -1,0 +1,11 @@
+CREATE INDEX moli_orders_provider_time ON moli_orders(provider_id,start_at,end_at);
+CREATE INDEX moli_orders_customer_status ON moli_orders(customer_id,status,created_at);
+CREATE INDEX moli_orders_provider_status ON moli_orders(provider_id,status);
+CREATE INDEX moli_orders_refund ON moli_orders(refund_status,created_at);
+CREATE INDEX moli_orders_expiry ON moli_orders(status,expires_at);
+CREATE INDEX moli_services_provider_active ON moli_services(provider_id,active);
+CREATE INDEX moli_services_game_rate ON moli_services(game,active,rate_cents);
+CREATE INDEX moli_reviews_provider ON moli_reviews(provider_id,hidden,created_at);
+CREATE INDEX moli_messages_order ON moli_messages(order_id,created_at);
+CREATE INDEX moli_sessions_user ON moli_sessions(user_id);
+CREATE INDEX moli_challenges_email ON moli_challenges(email,purpose,created_at);
