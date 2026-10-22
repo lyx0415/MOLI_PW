@@ -6,8 +6,79 @@ import { loadConfig } from "../lib/config.js";
 import { createApp } from "../app.js";
 import { seedDemo } from "../scripts/seed-demo.js";
 import { applyPayment } from "../lib/orders.js";
-import { id, hashPassword } from "../lib/security.js";
+import { id, hashPassword, issueSession } from "../lib/security.js";
 import mysql from "mysql2/promise";
+
+test("password reset during login cannot leave a new session authenticated with the old password", async (t) => {
+  const ctx = await fixture(t);
+  const user = await ctx.db.one(
+    "SELECT id FROM moli_users WHERE email='customer@demo.moli.test'",
+  );
+  const changedHash = await hashPassword("ChangedPassword52816");
+  const transaction = ctx.db.tx;
+  let reset = false;
+  ctx.db.tx = async (fn) => {
+    if (!reset) {
+      reset = true;
+      await transaction(async (tx) => {
+        await tx.run("UPDATE moli_users SET password_hash=? WHERE id=?", [
+          changedHash,
+          user.id,
+        ]);
+        await tx.run("DELETE FROM moli_sessions WHERE user_id=?", [user.id]);
+      });
+    }
+    return transaction(fn);
+  };
+  const response = await request(ctx.app)
+    .post("/api/auth/login")
+    .set("Origin", origin)
+    .send({ email: "customer@demo.moli.test", password: pass });
+  assert.equal(response.status, 401);
+  assert.equal(
+    (
+      await ctx.db.one(
+        "SELECT COUNT(*) AS n FROM moli_sessions WHERE user_id=?",
+        [user.id],
+      )
+    ).n,
+    0,
+  );
+});
+
+test("simultaneous password changes cannot overwrite a password reset with stale credentials", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test");
+  const changedHash = await hashPassword("ResetPassword52816");
+  const transaction = ctx.db.tx;
+  let reset = false;
+  ctx.db.tx = async (fn) => {
+    if (!reset) {
+      reset = true;
+      await transaction(async (tx) => {
+        await tx.run("UPDATE moli_users SET password_hash=? WHERE id=?", [
+          changedHash,
+          c.user.id,
+        ]);
+        await tx.run("DELETE FROM moli_sessions WHERE user_id=?", [c.user.id]);
+      });
+    }
+    return transaction(fn);
+  };
+  const response = await c.put("/auth/password", {
+    currentPassword: pass,
+    password: "OverwrittenPassword1234",
+  });
+  assert.equal(response.status, 409);
+  assert.equal(
+    (
+      await ctx.db.one("SELECT password_hash FROM moli_users WHERE id=?", [
+        c.user.id,
+      ])
+    ).password_hash,
+    changedHash,
+  );
+});
 
 const pass = "TestPassword48291",
   origin = "http://localhost:5173";
@@ -493,6 +564,12 @@ test("different customers cannot overlap one provider; refund denial restores pr
   await winner.post("/orders/" + o.id + "/refund-request", {
     reason: "需要售后核对的退款请求",
   });
+  const loser = winner === c ? other : c;
+  assert.equal(
+    (await loser.post("/orders", body)).status,
+    409,
+    "a pending refund must keep its slot reserved until the decision is final",
+  );
   assert.equal(
     (
       await admin.post("/admin/orders/" + o.id + "/refund-reject", {
@@ -507,4 +584,358 @@ test("different customers cannot overlap one provider; refund denial restores pr
   assert.equal(stored.status, "paid");
   assert.equal(stored.refund_status, "none");
   assert.match(stored.refund_reason, /未通过/);
+  assert.equal((await loser.post("/orders", body)).status, 409);
+  await winner.post("/orders/" + o.id + "/refund-request", {
+    reason: "确认无法继续服务，申请退款",
+  });
+  ctx.gateway.refund = async () => ({ processing: true });
+  assert.equal(
+    (await admin.post("/payments/" + o.id + "/refund", {})).status,
+    200,
+  );
+  assert.equal((await loser.post("/orders", body)).status, 409);
+  ctx.gateway.queryRefund = async () => ({ success: true });
+  assert.equal(
+    (await admin.post("/payments/" + o.id + "/refund", {})).status,
+    200,
+  );
+  assert.equal((await loser.post("/orders", body)).status, 201);
+  // Simulate an overlapping refund-pending record retained from an older release.
+  await ctx.db.run(
+    "UPDATE moli_orders SET status='refund_pending',payment_status='paid',refund_status='requested',refund_previous_status='paid' WHERE id=?",
+    [o.id],
+  );
+  assert.equal(
+    (
+      await admin.post("/admin/orders/" + o.id + "/refund-reject", {
+        reason: "尝试恢复旧版本的重叠订单",
+      })
+    ).status,
+    409,
+  );
+});
+
+test("fractional, nonfinite and structured pagination never generate invalid SQL", async (t) => {
+  const ctx = await fixture(t),
+    admin = await ctx.login("admin@demo.moli.test");
+  for (const query of [
+    "page=1.5&size=2.7",
+    "page=Infinity&size=NaN",
+    "page[x]=1&size[]=1",
+    "page=-2&size=0",
+  ]) {
+    for (const path of [
+      "/api/providers",
+      "/api/orders",
+      "/api/admin/users",
+      "/api/admin/applications",
+      "/api/admin/audit",
+      "/api/tickets",
+    ]) {
+      const r = await admin.agent.get(path + "?" + query);
+      assert.equal(r.status, 200, path + "?" + query);
+      assert(Number.isInteger(r.body.data.page));
+      assert(Number.isInteger(r.body.data.size));
+    }
+  }
+});
+
+test("operational lists and customer tickets remain reachable beyond the old row caps", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test");
+  const oldest = id();
+  await ctx.db.tx(async (tx) => {
+    for (let i = 0; i < 205; i++) {
+      const timestamp = new Date(Date.now() + i * 1000).toISOString();
+      await tx.run(
+        "INSERT INTO moli_tickets (id,user_id,subject,content,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+        [
+          i ? id() : oldest,
+          c.user.id,
+          "历史工单" + i,
+          "需要处理的历史工单",
+          timestamp,
+          timestamp,
+        ],
+      );
+    }
+  });
+  for (const [actor, path] of [
+    [c, "/api/tickets"],
+    [admin, "/api/admin/tickets"],
+  ]) {
+    const r = await actor.agent.get(path + "?page=18");
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.total, 205);
+    assert.equal(r.body.data.items[0].id, oldest);
+  }
+  for (const path of [
+    "providers",
+    "announcements",
+    "reviews",
+    "payouts",
+    "audit",
+  ]) {
+    const r = await admin.agent.get("/api/admin/" + path + "?page=2&size=2");
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.page, 2);
+    assert.equal(r.body.data.size, 2);
+    assert(Array.isArray(r.body.data.items));
+  }
+});
+
+test("support permissions are limited to tickets; customer and provider conversations are private", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    p = await ctx.login("provider1@demo.moli.test"),
+    support = await ctx.login("support@demo.moli.test");
+  const o = await book(ctx, c);
+  const ticket = await c.post("/tickets", {
+    subject: "订单咨询",
+    content: "请帮忙核对这笔订单",
+    orderId: o.id,
+  });
+  assert.equal(ticket.status, 201);
+  const path = "/tickets/" + ticket.body.data.id;
+  assert.equal(
+    (await support.agent.get("/api/support/tickets")).body.data.total,
+    1,
+  );
+  assert.equal(
+    (await support.agent.get("/api/support" + path + "/messages")).status,
+    200,
+  );
+  assert.equal((await p.agent.get("/api" + path + "/messages")).status, 403);
+  assert.equal((await c.agent.get("/api/support/tickets")).status, 403);
+  assert.equal((await p.agent.get("/api/support/tickets")).status, 403);
+  for (const resource of ["users", "payouts", "orders", "audit"]) {
+    assert.equal(
+      (await support.agent.get("/api/admin/" + resource)).status,
+      403,
+    );
+  }
+  assert.equal((await support.agent.get("/api/orders/" + o.id)).status, 403);
+  assert.equal(
+    (await support.post("/payments/" + o.id + "/refund", {})).status,
+    403,
+  );
+  assert.equal(
+    (
+      await p.post("/tickets", {
+        subject: "陪玩咨询",
+        content: "需要了解结算流程",
+      })
+    ).status,
+    201,
+  );
+  assert.equal((await p.agent.get("/api/tickets")).body.data.total, 1);
+  assert.equal((await c.agent.get("/api/tickets")).body.data.total, 1);
+  assert.equal(
+    (await support.agent.get("/api/support/tickets")).body.data.total,
+    2,
+  );
+});
+
+test("simultaneous staff replies cannot overwrite each other; customer followups reopen resolved tickets", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test"),
+    support = await ctx.login("support@demo.moli.test");
+  const created = await c.post("/tickets", {
+    subject: "售后沟通",
+    content: "请核对我的服务问题",
+  });
+  const path = "/tickets/" + created.body.data.id;
+  const original = (await c.agent.get("/api" + path + "/messages")).body.data
+    .ticket;
+  const body = {
+    reply: "已核对记录，先为您登记处理。",
+    status: "resolved",
+    updatedAt: original.updated_at,
+  };
+  const replies = await Promise.all([
+    admin.put("/admin" + path, body),
+    support.put("/support" + path, {
+      ...body,
+      reply: "另一位客服的回复不能覆盖先前处理。",
+    }),
+  ]);
+  assert.deepEqual(replies.map((r) => r.status).sort(), [200, 409]);
+  let history = (await c.agent.get("/api" + path + "/messages")).body.data;
+  assert.equal(history.total, 1);
+  assert.equal(history.ticket.status, "resolved");
+  assert.equal(
+    (
+      await c.post(path + "/messages", {
+        content: "我还有补充情况，请继续处理。",
+        updatedAt: original.updated_at,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await c.post(path + "/messages", {
+        content: "我还有补充情况，请继续处理。",
+        updatedAt: history.ticket.updated_at,
+      })
+    ).status,
+    200,
+  );
+  history = (await c.agent.get("/api" + path + "/messages")).body.data;
+  assert.equal(history.total, 2);
+  assert.equal(history.ticket.status, "open");
+  assert.equal(
+    (
+      await support.put("/support" + path, {
+        ...body,
+        updatedAt: history.ticket.updated_at,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await c.agent.get("/api" + path + "/messages")).body.data.total,
+    3,
+  );
+  const audits = await ctx.db.all(
+    "SELECT * FROM moli_audit WHERE target_id=? AND action='ticket.reply'",
+    [original.id],
+  );
+  assert.equal(audits.length, 2);
+});
+
+test("admin grants and revokes verified support accounts, invalidates sessions and blocks privilege escalation", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test"),
+    support = await ctx.login("support@demo.moli.test"),
+    p = await ctx.login("provider1@demo.moli.test");
+  const path = "/admin/users/" + c.user.id + "/role";
+  assert.equal((await support.put(path, { role: "support" })).status, 403);
+  assert.equal((await admin.put(path, { role: "admin" })).status, 400);
+  assert.equal(
+    (
+      await admin.put("/admin/users/" + p.user.id + "/role", {
+        role: "support",
+      })
+    ).status,
+    409,
+  );
+  await ctx.db.run("UPDATE moli_users SET email_verified=0 WHERE id=?", [
+    c.user.id,
+  ]);
+  assert.equal((await admin.put(path, { role: "support" })).status, 409);
+  await ctx.db.run("UPDATE moli_users SET email_verified=1 WHERE id=?", [
+    c.user.id,
+  ]);
+  assert.equal((await admin.put(path, { role: "support" })).status, 200);
+  assert.equal((await c.agent.get("/api/auth/me")).status, 401);
+  const fresh = await ctx.login("customer@demo.moli.test");
+  assert.equal(fresh.user.role, "support");
+  assert.equal((await fresh.agent.get("/api/support/tickets")).status, 200);
+  assert.equal((await admin.put(path, { role: "customer" })).status, 200);
+  assert.equal((await fresh.agent.get("/api/support/tickets")).status, 401);
+});
+
+test("users sharing an IP have independent API quotas while each account remains rate limited", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    support = await ctx.login("support@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test"),
+    p = await ctx.login("provider1@demo.moli.test");
+  let last;
+  for (let i = 0; i < 601; i++) last = await c.agent.get("/api/auth/me");
+  assert.equal(last.status, 429);
+  const results = await Promise.all([
+    support.agent.get("/api/support/tickets"),
+    admin.agent.get("/api/admin/overview"),
+    p.agent.get("/api/provider/dashboard"),
+  ]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200, 200],
+  );
+});
+
+test("support migration retains legacy replies and repeated migrations do not duplicate history", async (t) => {
+  const ctx = await fixture(t),
+    c = await ctx.login("customer@demo.moli.test"),
+    ticketId = id(),
+    timestamp = new Date().toISOString();
+  await ctx.db.run(
+    "INSERT INTO moli_tickets (id,user_id,subject,content,reply,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    [
+      ticketId,
+      c.user.id,
+      "旧版工单",
+      "旧版用户问题",
+      "旧版客服回复需要保留",
+      timestamp,
+      timestamp,
+    ],
+  );
+  await ctx.db.run("DELETE FROM moli_migrations WHERE name='003-support.sql'");
+  await migrate(ctx.db);
+  await migrate(ctx.db);
+  const history = (await c.agent.get("/api/tickets/" + ticketId + "/messages"))
+    .body.data;
+  assert.equal(history.total, 1);
+  assert.equal(history.items[0].content, "旧版客服回复需要保留");
+});
+
+test("24 concurrent sessions can read role dashboards and submit tickets without shared-IP failures", async (t) => {
+  const ctx = await fixture(t);
+  const users = await ctx.db.all(
+    "SELECT id,role FROM moli_users WHERE email IN ('customer@demo.moli.test','provider1@demo.moli.test','support@demo.moli.test','admin@demo.moli.test')",
+  );
+  const endpoints = {
+    customer: "/orders",
+    provider: "/provider/dashboard",
+    support: "/support/tickets",
+    admin: "/admin/overview",
+  };
+  const sessions = [];
+  for (const user of users)
+    for (let i = 0; i < 6; i++) {
+      sessions.push({
+        user,
+        ...(await issueSession(ctx.db, user.id, ctx.config)),
+      });
+    }
+  const durations = [];
+  const started = performance.now();
+  await Promise.all(
+    sessions.map(async (session) => {
+      for (let i = 0; i < 25; i++) {
+        const start = performance.now();
+        const response = await request(ctx.app)
+          .get("/api" + endpoints[session.user.role])
+          .set("Cookie", "moli_session=" + session.token);
+        assert.equal(response.status, 200, JSON.stringify(response.body));
+        durations.push(performance.now() - start);
+        if (session.user.role === "customer" && i % 5 === 0) {
+          const response = await request(ctx.app)
+            .post("/api/tickets")
+            .set("Cookie", "moli_session=" + session.token)
+            .set("Origin", origin)
+            .set("X-CSRF-Token", session.csrf)
+            .send({
+              subject: "并发工单",
+              content: "同时在线的用户提交客服咨询。",
+            });
+          assert.equal(response.status, 201, JSON.stringify(response.body));
+        }
+      }
+    }),
+  );
+  assert.equal(
+    (await ctx.db.one("SELECT COUNT(*) AS n FROM moli_tickets")).n,
+    30,
+  );
+  durations.sort((a, b) => a - b);
+  t.diagnostic(
+    `24 sessions; 600 reads + 30 ticket writes; elapsed ${Math.round(performance.now() - started)}ms; read p95 ${Math.round(durations[Math.ceil(durations.length * 0.95) - 1])}ms. This is a bounded smoke load, not a production capacity guarantee.`,
+  );
 });

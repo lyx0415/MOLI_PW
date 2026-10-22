@@ -163,14 +163,27 @@ export function accountRoutes({ db, config, requireAuth, mailer }) {
       401,
       "邮箱或密码错误，或账号已停用",
     );
-    // Rotate the current session rather than retaining a fixed login token.
-    if (req.cookies.moli_session)
-      await db.run("DELETE FROM moli_sessions WHERE token_hash=?", [
-        digest(req.cookies.moli_session),
-      ]);
-    const session = await issueSession(db, user.id, config);
+    // Serialize session creation with password resets and account revocation.
+    // A password validated before a reset must not create a fresh session after it.
+    const { session, current } = await db.tx(async (tx) => {
+      const current = await tx.one(
+        "SELECT * FROM moli_users WHERE id=?" + tx.lock,
+        [user.id],
+      );
+      assert(
+        current?.state === "active" &&
+          current.password_hash === user.password_hash,
+        401,
+        "账号凭据已变化，请重新登录",
+      );
+      if (req.cookies.moli_session)
+        await tx.run("DELETE FROM moli_sessions WHERE token_hash=?", [
+          digest(req.cookies.moli_session),
+        ]);
+      return { session: await issueSession(tx, user.id, config), current };
+    });
     setSessionCookie(res, session.token, config);
-    ok(res, { user: publicUser(user), csrf: session.csrf }, "欢迎回来");
+    ok(res, { user: publicUser(current), csrf: session.csrf }, "欢迎回来");
   });
   router.get("/me", requireAuth, (req, res) =>
     ok(res, { user: publicUser(req.user), csrf: req.session.csrf }),
@@ -232,6 +245,16 @@ export function accountRoutes({ db, config, requireAuth, mailer }) {
     );
     const hash = await hashPassword(data.password);
     await db.tx(async (tx) => {
+      const current = await tx.one(
+        "SELECT password_hash,state FROM moli_users WHERE id=?" + tx.lock,
+        [req.user.id],
+      );
+      assert(
+        current?.state === "active" &&
+          current.password_hash === req.user.password_hash,
+        409,
+        "密码已被其他操作更新，请重新登录",
+      );
       await tx.run("UPDATE moli_users SET password_hash=? WHERE id=?", [
         hash,
         req.user.id,

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { assert, ok, now } from "../lib/errors.js";
 import { id, audit } from "../lib/security.js";
 import { text, pagination } from "../lib/validation.js";
+import { ticketRoutes } from "./tickets.js";
+import { listPage } from "../lib/listing.js";
 
 export function managementRoutes({ db, requireAuth, requireRole }) {
   const router = Router();
@@ -75,6 +77,7 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
         [a.user_id],
       );
       assert(user.state === "active", 409, "申请账号已停用");
+      assert(user.role === "customer", 409, "账号角色已变化，请先核对权限");
       if (data.action === "approve") {
         const d = JSON.parse(a.data_json),
           providerId = id();
@@ -147,6 +150,14 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
   router.post("/orders/:id/refund-reject", async (req, res) => {
     const data = z.object({ reason: text(500, 5) }).parse(req.body);
     await db.tx(async (tx) => {
+      const target = await tx.one(
+        "SELECT provider_id FROM moli_orders WHERE id=?",
+        [req.params.id],
+      );
+      assert(target, 404, "订单不存在");
+      await tx.one("SELECT id FROM moli_providers WHERE id=?" + tx.lock, [
+        target.provider_id,
+      ]);
       const o = await tx.one("SELECT * FROM moli_orders WHERE id=?" + tx.lock, [
         req.params.id,
       ]);
@@ -156,6 +167,17 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
           o.refund_previous_status,
         409,
         "此退款申请不能拒绝",
+      );
+      // Older releases freed refund-pending slots. Do not restore a legacy
+      // order over a booking that was accepted before this fix was deployed.
+      const conflict = await tx.one(
+        "SELECT id FROM moli_orders WHERE provider_id=? AND id<>? AND start_at<? AND end_at>? AND ((status='awaiting_payment' AND expires_at>?) OR status IN ('paid','accepted','in_service','awaiting_confirmation','refund_pending')) LIMIT 1",
+        [o.provider_id, o.id, o.end_at, o.start_at, now()],
+      );
+      assert(
+        !conflict,
+        409,
+        "档期已有冲突订单，不能恢复服务，请协调后处理退款",
       );
       await tx.run(
         "UPDATE moli_orders SET status=?,refund_status='none',refund_reason=?,updated_at=? WHERE id=?",
@@ -204,12 +226,51 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
     });
     ok(res);
   });
+  router.put("/users/:id/role", async (req, res) => {
+    const data = z
+      .object({ role: z.enum(["customer", "support"]) })
+      .parse(req.body);
+    assert(req.params.id !== req.user.id, 400, "不能修改自己的权限");
+    await db.tx(async (tx) => {
+      const user = await tx.one(
+        "SELECT * FROM moli_users WHERE id=?" + tx.lock,
+        [req.params.id],
+      );
+      assert(user, 404, "账号不存在");
+      assert(
+        ["customer", "support"].includes(user.role),
+        409,
+        "管理员和陪玩账号不能改为客服",
+      );
+      assert(user.state === "active", 409, "请先恢复账号");
+      const application = await tx.one(
+        "SELECT status FROM moli_applications WHERE user_id=?",
+        [user.id],
+      );
+      assert(
+        !application || application.status === "rejected",
+        409,
+        "此账号有入驻申请，请先处理申请",
+      );
+      if (data.role === "support")
+        assert(user.email_verified, 409, "客服账号必须先验证邮箱");
+      await tx.run("UPDATE moli_users SET role=? WHERE id=?", [
+        data.role,
+        user.id,
+      ]);
+      await tx.run("DELETE FROM moli_sessions WHERE user_id=?", [user.id]);
+      await audit(tx, req.user.id, "user.role", user.id, data.role);
+    });
+    ok(res, null, "权限已更新，该账号需要重新登录");
+  });
   router.get("/providers", async (req, res) =>
     ok(
       res,
-      await db.all(
-        "SELECT p.id,p.nickname,p.city,p.status,p.accepting,u.email FROM moli_providers p JOIN moli_users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 200",
-      ),
+      await listPage(db, req.query, {
+        select: "SELECT p.id,p.nickname,p.city,p.status,p.accepting,u.email",
+        from: "FROM moli_providers p JOIN moli_users u ON u.id=p.user_id",
+        orderBy: "p.created_at DESC,p.id DESC",
+      }),
     ),
   );
   router.put("/providers/:id/state", async (req, res) => {
@@ -224,32 +285,15 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
     await audit(db, req.user.id, "provider." + data.status, req.params.id);
     ok(res);
   });
-  router.get("/tickets", async (req, res) =>
-    ok(
-      res,
-      await db.all(
-        "SELECT t.*,u.name,u.email FROM moli_tickets t JOIN moli_users u ON u.id=t.user_id ORDER BY t.created_at DESC LIMIT 200",
-      ),
-    ),
-  );
-  router.put("/tickets/:id", async (req, res) => {
-    const data = z
-      .object({ reply: text(3000, 3), status: z.enum(["open", "resolved"]) })
-      .parse(req.body);
-    const r = await db.run(
-      "UPDATE moli_tickets SET reply=?,status=?,updated_at=? WHERE id=?",
-      [data.reply, data.status, now(), req.params.id],
-    );
-    assert(r.changes, 404, "工单不存在");
-    await audit(db, req.user.id, "ticket.reply", req.params.id);
-    ok(res);
-  });
+  router.use("/tickets", ticketRoutes({ db, staff: true }));
   router.get("/announcements", async (req, res) =>
     ok(
       res,
-      await db.all(
-        "SELECT * FROM moli_announcements ORDER BY created_at DESC LIMIT 100",
-      ),
+      await listPage(db, req.query, {
+        select: "SELECT *",
+        from: "FROM moli_announcements",
+        orderBy: "created_at DESC,id DESC",
+      }),
     ),
   );
   router.post("/announcements", async (req, res) => {
@@ -274,9 +318,11 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
   router.get("/reviews", async (req, res) =>
     ok(
       res,
-      await db.all(
-        "SELECT r.*,p.nickname FROM moli_reviews r JOIN moli_providers p ON p.id=r.provider_id ORDER BY r.created_at DESC LIMIT 200",
-      ),
+      await listPage(db, req.query, {
+        select: "SELECT r.*,p.nickname",
+        from: "FROM moli_reviews r JOIN moli_providers p ON p.id=r.provider_id",
+        orderBy: "r.created_at DESC,r.id DESC",
+      }),
     ),
   );
   router.put("/reviews/:id", async (req, res) => {
@@ -293,9 +339,11 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
   router.get("/payouts", async (req, res) =>
     ok(
       res,
-      await db.all(
-        "SELECT x.*,p.nickname FROM moli_payouts x JOIN moli_providers p ON p.id=x.provider_id ORDER BY x.created_at DESC LIMIT 200",
-      ),
+      await listPage(db, req.query, {
+        select: "SELECT x.*,p.nickname",
+        from: "FROM moli_payouts x JOIN moli_providers p ON p.id=x.provider_id",
+        orderBy: "x.created_at DESC,x.id DESC",
+      }),
     ),
   );
   router.put("/payouts/:id", async (req, res) => {
@@ -324,12 +372,13 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
     ok(res, null, "结算登记已保存");
   });
   router.get("/audit", async (req, res) => {
-    const { page, size } = pagination({ ...req.query, size: 30 });
     ok(
       res,
-      await db.all(
-        `SELECT a.*,u.name FROM moli_audit a LEFT JOIN moli_users u ON u.id=a.user_id ORDER BY a.created_at DESC LIMIT ${size} OFFSET ${(page - 1) * size}`,
-      ),
+      await listPage(db, req.query, {
+        select: "SELECT a.*,u.name",
+        from: "FROM moli_audit a LEFT JOIN moli_users u ON u.id=a.user_id",
+        orderBy: "a.created_at DESC,a.id DESC",
+      }),
     );
   });
   return router;

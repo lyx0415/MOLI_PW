@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
   LayoutDashboard,
   UserRound,
@@ -22,6 +22,7 @@ import {
   notify,
 } from "../lib/api.js";
 import Pagination from "../components/Pagination.vue";
+import TicketConversation from "../components/TicketConversation.vue";
 const tab = ref("overview"),
   overview = ref({}),
   rows = ref([]),
@@ -34,6 +35,7 @@ const tab = ref("overview"),
   modal = ref(),
   operation = ref(""),
   target = ref(null),
+  thread = ref(null),
   reason = ref(""),
   identityReviewed = ref(false),
   announcementDialog = ref(),
@@ -59,15 +61,21 @@ const titles = {
   payoutPaid: "登记结算付款",
   payoutRejected: "拒绝结算申请",
   userState: "调整账号状态",
+  userRole: "调整客服权限",
   providerState: "调整主页状态",
   reviewState: "调整评价可见性",
 };
+let requestNumber = 0;
 async function load(page = 1) {
+  const current = ++requestNumber;
+  const selectedTab = tab.value;
   loading.value = true;
   failed.value = false;
   try {
-    if (tab.value === "overview") {
-      overview.value = await api("/admin/overview");
+    if (selectedTab === "overview") {
+      const result = await api("/admin/overview");
+      if (current !== requestNumber) return;
+      overview.value = result;
       rows.value = [];
     } else {
       const query = new URLSearchParams({
@@ -75,24 +83,29 @@ async function load(page = 1) {
         status: status.value,
         refunds: String(refunds.value),
       });
-      const data = await api("/admin/" + tab.value + "?" + query);
+      const data = await api("/admin/" + selectedTab + "?" + query);
+      if (current !== requestNumber) return;
       rows.value = Array.isArray(data) ? data : data.items;
       pagination.value = Array.isArray(data)
         ? { page: 1, total: 0 }
-        : { page: data.page, total: data.total };
+        : { page: data.page, total: data.total, size: data.size };
     }
   } catch {
-    failed.value = true;
+    if (current === requestNumber) failed.value = true;
   } finally {
-    loading.value = false;
+    if (current === requestNumber) loading.value = false;
   }
 }
 watch(tab, () => {
+  thread.value = null;
   status.value = "";
   refunds.value = false;
   load();
 });
 onMounted(() => load());
+onUnmounted(() => {
+  requestNumber++;
+});
 function open(kind, row) {
   operation.value = kind;
   target.value = row;
@@ -120,10 +133,10 @@ async function submit() {
         method: "POST",
         body: { reason: reason.value },
       });
-    else if (operation.value === "reply")
-      await api("/admin/tickets/" + t.id, {
+    else if (operation.value === "userRole")
+      await api("/admin/users/" + t.id + "/role", {
         method: "PUT",
-        body: { reply: reason.value, status: "resolved" },
+        body: { role: t.role === "support" ? "customer" : "support" },
       });
     else if (operation.value.startsWith("payout"))
       await api("/admin/payouts/" + t.id, {
@@ -449,9 +462,12 @@ async function toggleAnnouncement(row) {
                     </td>
                     <td>
                       {{
-                        { customer: "客户", provider: "陪玩", admin: "管理员" }[
-                          u.role
-                        ]
+                        {
+                          customer: "客户",
+                          provider: "陪玩",
+                          admin: "管理员",
+                          support: "客服",
+                        }[u.role]
                       }}
                     </td>
                     <td>{{ u.state === "active" ? "正常" : "已停用" }}</td>
@@ -462,6 +478,16 @@ async function toggleAnnouncement(row) {
                         @click="open('userState', u)"
                       >
                         {{ u.state === "active" ? "停用账号" : "恢复账号" }}
+                      </button>
+                      <button
+                        v-if="
+                          ['customer', 'support'].includes(u.role) &&
+                          u.state === 'active'
+                        "
+                        class="text-button"
+                        @click="open('userRole', u)"
+                      >
+                        {{ u.role === "support" ? "撤销客服权限" : "设为客服" }}
                       </button>
                     </td>
                   </tr>
@@ -521,10 +547,20 @@ async function toggleAnnouncement(row) {
                   :to="'/orders/' + t.order_id"
                   class="text-link"
                   >关联订单</router-link
-                ><button class="button secondary" @click="open('reply', t)">
+                ><button
+                  class="button secondary"
+                  @click="thread = thread?.id === t.id ? null : t"
+                >
                   回复工单
                 </button>
               </div>
+              <TicketConversation
+                v-if="thread?.id === t.id"
+                :ticket="t"
+                staff
+                base="/admin/tickets"
+                @updated="load(pagination.page)"
+              />
             </article>
             <div class="table-wrap" v-if="tab === 'payouts' && rows.length">
               <table>
@@ -631,6 +667,7 @@ async function toggleAnnouncement(row) {
               v-if="pagination.total"
               :page="pagination.page"
               :total="pagination.total"
+              :size="pagination.size || 12"
               @change="load"
             /></section
         ></template>
@@ -675,6 +712,12 @@ async function toggleAnnouncement(row) {
           ><p>
             将{{ target?.state === "active" ? "停用" : "恢复" }}
             {{ target?.name }} 的账号。停用会终止登录会话，并停止其新预约。
+          </p></template
+        ><template v-if="operation === 'userRole'"
+          ><p>
+            {{ target?.role === "support" ? "撤销" : "授予" }}
+            {{ target?.name }}
+            的客服权限。客服可查看和回复工单；退款、结算及账号管理仍由管理员处理。授权需要已验证邮箱，变更后该账号须重新登录。
           </p></template
         ><template v-if="operation === 'providerState'"
           ><p>

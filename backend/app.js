@@ -1,7 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { ZodError } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -14,6 +14,7 @@ import { catalogRoutes } from "./routes/catalog.js";
 import { businessRoutes } from "./routes/business.js";
 import { managementRoutes } from "./routes/management.js";
 import { paymentRoutes } from "./routes/payments.js";
+import { ticketRoutes } from "./routes/tickets.js";
 
 export function createApp({
   db,
@@ -51,16 +52,6 @@ export function createApp({
   );
   app.use(express.urlencoded({ extended: false, limit: "64kb" }));
   app.use(cookieParser());
-  app.use(
-    "/api",
-    rateLimit({
-      windowMs: 300000,
-      limit: 600,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-      message: { code: 429, message: "请求频繁，请稍后重试", data: null },
-    }),
-  );
   const authLimiter = rateLimit({
     windowMs: 900000,
     limit: 30,
@@ -114,6 +105,18 @@ export function createApp({
     res.setHeader("Cache-Control", "no-store");
     next();
   });
+  app.use(
+    "/api",
+    rateLimit({
+      windowMs: 300000,
+      limit: 600,
+      keyGenerator: (req) =>
+        req.user ? "user:" + req.user.id : "ip:" + ipKeyGenerator(req.ip),
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      message: { code: 429, message: "请求频繁，请稍后重试", data: null },
+    }),
+  );
   const requireAuth = (req, res, next) => {
     assert(req.user, 401, "请先登录");
     next();
@@ -137,6 +140,12 @@ export function createApp({
   app.use("/api", catalogRoutes(deps));
   app.use("/api/payments", paymentRoutes(deps));
   app.use("/api/admin", managementRoutes(deps));
+  app.use(
+    "/api/support/tickets",
+    requireAuth,
+    requireRole("support", "admin"),
+    ticketRoutes({ db, staff: true }),
+  );
   app.use("/api", businessRoutes(deps));
   app.use("/api", (req, res) => {
     throw new HttpError(404, "接口不存在");

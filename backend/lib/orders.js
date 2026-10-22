@@ -68,7 +68,7 @@ export async function createOrder(db, user, data, config) {
       "此时段不在陪玩的可预约时间内",
     );
     const conflict = await tx.one(
-      `SELECT id FROM moli_orders WHERE provider_id=? AND start_at<? AND end_at>? AND ((status='awaiting_payment' AND expires_at>?) OR status IN ('paid','accepted','in_service','awaiting_confirmation')) LIMIT 1`,
+      `SELECT id FROM moli_orders WHERE provider_id=? AND start_at<? AND end_at>? AND ((status='awaiting_payment' AND expires_at>?) OR status IN ('paid','accepted','in_service','awaiting_confirmation','refund_pending')) LIMIT 1`,
       [provider.id, window.endAt, window.startAt, now()],
     );
     assert(!conflict, 409, "此时段已被预约，请选择其他时间");
@@ -140,7 +140,7 @@ export async function applyPayment(db, result) {
     }
     // Late paid notifications are recorded for refund, never silently discarded.
     const isLate =
-      order.status !== "awaiting_payment" || order.expires_at < now();
+      order.status !== "awaiting_payment" || order.expires_at <= now();
     await tx.run(
       "UPDATE moli_orders SET payment_status=?,gateway_trade_no=?,paid_at=?,status=?,refund_status=?,refund_reason=?,updated_at=? WHERE id=?",
       [

@@ -10,6 +10,7 @@ import {
   text,
 } from "../lib/validation.js";
 import { createOrder, orderAccess, transitionOrder } from "../lib/orders.js";
+import { ticketRoutes } from "./tickets.js";
 
 export async function earnings(db, providerId) {
   const earned = await db.one(
@@ -42,9 +43,15 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
     assert(req.user.role === "customer", 409, "你的账号已经开通陪玩或管理权限");
     const data = applicationSchema.parse(req.body);
     const appId = await db.tx(async (tx) => {
-      await tx.one("SELECT id FROM moli_users WHERE id=?" + tx.lock, [
-        req.user.id,
-      ]);
+      const applicant = await tx.one(
+        "SELECT role,state FROM moli_users WHERE id=?" + tx.lock,
+        [req.user.id],
+      );
+      assert(
+        applicant?.role === "customer" && applicant.state === "active",
+        409,
+        "账号权限已变化，请重新登录",
+      );
       const a = await tx.one(
         "SELECT * FROM moli_applications WHERE user_id=?",
         [req.user.id],
@@ -272,15 +279,7 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
     });
     ok(res, null, "感谢你的真实评价", 201);
   });
-  router.get("/tickets", async (req, res) =>
-    ok(
-      res,
-      await db.all(
-        "SELECT * FROM moli_tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 50",
-        [req.user.id],
-      ),
-    ),
-  );
+  router.use("/tickets", ticketRoutes({ db }));
   router.post("/tickets", async (req, res) => {
     const data = z
       .object({

@@ -7,6 +7,174 @@ async function login(page, email) {
   await page.getByRole("button", { name: "登录，开始新的一局" }).click();
   await expect(page).toHaveURL(/\/account/);
 }
+
+test("customer, provider, support and admin collaborate on tickets without lost replies or excess privileges", async ({
+  page,
+  browser,
+}) => {
+  const contexts = await Promise.all([
+    browser.newContext(),
+    browser.newContext(),
+    browser.newContext(),
+  ]);
+  const [support, admin, provider] = await Promise.all(
+    contexts.map((c) => c.newPage()),
+  );
+  try {
+    await login(page, "customer@demo.moli.test");
+    await login(support, "support@demo.moli.test");
+    await login(admin, "admin@demo.moli.test");
+    await login(provider, "provider2@demo.moli.test");
+    await page.goto("/help");
+    await page.getByLabel("问题主题", { exact: true }).fill("多人客服回归");
+    await page
+      .getByLabel("具体情况", { exact: true })
+      .fill("需要核对本次服务，请协助处理。");
+    await page.getByRole("button", { name: "提交工单", exact: true }).click();
+    const customerTicket = page
+      .locator("article.ticket")
+      .filter({ hasText: "多人客服回归" });
+    await expect(customerTicket).toBeVisible();
+    await provider.goto("/help");
+    await provider.getByLabel("问题主题", { exact: true }).fill("陪玩咨询回归");
+    await provider
+      .getByLabel("具体情况", { exact: true })
+      .fill("陪玩需要确认结算资料提交方式。");
+    await provider
+      .getByRole("button", { name: "提交工单", exact: true })
+      .click();
+    await expect(
+      provider.locator("article.ticket").filter({ hasText: "陪玩咨询回归" }),
+    ).toBeVisible();
+    await expect(
+      provider.locator("article.ticket").filter({ hasText: "多人客服回归" }),
+    ).toHaveCount(0);
+
+    await support.goto("/admin");
+    await expect(support).toHaveURL(/\/account/);
+    await support.setViewportSize({ width: 390, height: 844 });
+    await support.getByRole("button", { name: "展开导航" }).click();
+    await support
+      .getByRole("navigation", { name: "主导航" })
+      .getByRole("link", { name: "客服工作台", exact: true })
+      .click();
+    await expect(support).toHaveURL(/\/support/);
+    const supportTicket = support
+      .locator("article.ticket")
+      .filter({ hasText: "多人客服回归" });
+    await supportTicket.getByRole("button", { name: "处理工单" }).click();
+    await supportTicket
+      .getByLabel("客服回复", { exact: true })
+      .fill("已登记并核对，请确认处理结果。");
+    await supportTicket.getByLabel("处理状态").selectOption("resolved");
+    await supportTicket.getByRole("button", { name: "保存回复" }).click();
+    await expect(supportTicket).toHaveCount(0);
+
+    await page.getByRole("button", { name: "刷新工单" }).click();
+    await expect(customerTicket).toContainText("已登记并核对");
+    await customerTicket
+      .getByRole("button", { name: "查看记录 / 追问" })
+      .click();
+    await customerTicket
+      .getByLabel("补充情况")
+      .fill("仍然有问题，请继续核对服务时间。");
+    await customerTicket.getByRole("button", { name: "发送追问" }).click();
+    await expect(customerTicket.locator(".status-pill")).toHaveText("处理中");
+
+    await support.getByRole("button", { name: "刷新工单" }).click();
+    await supportTicket.getByRole("button", { name: "处理工单" }).click();
+    await admin.goto("/support");
+    const adminTicket = admin
+      .locator("article.ticket")
+      .filter({ hasText: "多人客服回归" });
+    await adminTicket.getByRole("button", { name: "处理工单" }).click();
+    await adminTicket
+      .getByLabel("客服回复", { exact: true })
+      .fill("管理员补充：继续协助跟进。");
+    await supportTicket
+      .getByLabel("客服回复", { exact: true })
+      .fill("客服补充：已经查到服务记录。");
+    await supportTicket.getByRole("button", { name: "保存回复" }).click();
+    await expect(supportTicket).toContainText("客服补充：已经查到服务记录。");
+    await adminTicket.getByRole("button", { name: "保存回复" }).click();
+    await expect(admin.locator(".toast")).toContainText("工单已有新消息");
+    await expect(
+      adminTicket.getByLabel("客服回复", { exact: true }),
+    ).toHaveValue("管理员补充：继续协助跟进。");
+    await expect(adminTicket).toContainText("客服补充：已经查到服务记录。");
+    await adminTicket.getByRole("button", { name: "保存回复" }).click();
+    await expect(adminTicket.locator(".ticket-reply")).toHaveCount(4);
+    expect(
+      await support.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await Promise.all(contexts.map((c) => c.close()));
+  }
+});
+
+test("admin can revoke support access and stale tab responses cannot replace the active table", async ({
+  page,
+  browser,
+}) => {
+  const context = await browser.newContext(),
+    support = await context.newPage();
+  try {
+    await login(page, "admin@demo.moli.test");
+    await login(support, "support@demo.moli.test");
+    await support.goto("/support");
+    await page.goto("/admin");
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    let seen;
+    const requested = new Promise((resolve) => {
+      seen = resolve;
+    });
+    await page.route("**/api/admin/users?*", async (route) => {
+      const response = await route.fetch();
+      seen();
+      await gate;
+      await route.fulfill({ response });
+    });
+    await page.getByRole("button", { name: "账号管理", exact: true }).click();
+    await requested;
+    await page.getByRole("button", { name: "陪玩管理", exact: true }).click();
+    await expect(page.locator("tbody tr")).toHaveCount(6);
+    const staleResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/admin/users?"),
+    );
+    release();
+    await staleResponse;
+    await expect(page.locator("tbody tr")).toHaveCount(6);
+    await expect(page.locator("table")).not.toContainText(
+      "support@demo.moli.test",
+    );
+    await page.unroute("**/api/admin/users?*");
+    await page.getByRole("button", { name: "账号管理", exact: true }).click();
+    const row = page
+      .locator("tbody tr")
+      .filter({ hasText: "support@demo.moli.test" });
+    await row.getByRole("button", { name: "撤销客服权限" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "确认处理" })
+      .click();
+    await expect(row).toContainText("客户");
+    await support.getByRole("button", { name: "刷新工单" }).click();
+    await expect(support).toHaveURL(/\/login/);
+    await row.getByRole("button", { name: "设为客服" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "确认处理" })
+      .click();
+    await expect(row).toContainText("撤销客服权限");
+  } finally {
+    await context.close();
+  }
+});
 test("homepage, discovery search, real empty ratings and responsive navigation", async ({
   page,
 }) => {

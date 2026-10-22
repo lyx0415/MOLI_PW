@@ -63,6 +63,11 @@ async function signOut() {
             class="mobile-nav-item"
             to="/admin"
             >管理后台</router-link
+          ><router-link
+            v-if="['support', 'admin'].includes(auth.user?.role)"
+            class="mobile-nav-item"
+            to="/support"
+            >客服工作台</router-link
           ><router-link v-if="auth.user" class="mobile-nav-item" to="/account"
             >个人中心</router-link
           >
@@ -73,6 +78,10 @@ async function signOut() {
             >工作台</router-link
           ><router-link v-if="auth.user.role === 'admin'" to="/admin"
             >管理后台</router-link
+          ><router-link
+            v-if="['support', 'admin'].includes(auth.user.role)"
+            to="/support"
+            >客服工作台</router-link
           ><router-link to="/account" class="account-chip"
             ><UserRound :size="16" /><span>{{
               auth.user.name

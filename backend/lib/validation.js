@@ -59,7 +59,18 @@ export const scheduleSchema = z
           ctx.addIssue({ code: "custom", message: "可预约时间段不能重叠" });
     }
   });
-export const pagination = (query) => ({
-  page: Math.max(1, Math.min(10000, Number(query.page) || 1)),
-  size: Math.max(1, Math.min(50, Number(query.size) || 12)),
-});
+export const pagination = (query) => {
+  const integer = (value, fallback, maximum) => {
+    const number =
+      typeof value === "string" || typeof value === "number"
+        ? Number(value)
+        : NaN;
+    return Number.isFinite(number) && number > 0
+      ? Math.max(1, Math.min(maximum, Math.trunc(number)))
+      : fallback;
+  };
+  return {
+    page: integer(query.page, 1, 10000),
+    size: integer(query.size, 12, 50),
+  };
+};
