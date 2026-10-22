@@ -4,8 +4,11 @@ import { useRoute } from "vue-router";
 import { ArrowUpRight, Headphones, ChevronDown } from "lucide-vue-next";
 import { api, auth, notify, datetime } from "../lib/api.js";
 import { site } from "../lib/site.js";
+import Pagination from "../components/Pagination.vue";
+import TicketConversation from "../components/TicketConversation.vue";
 const route = useRoute(),
-  tickets = ref([]),
+  tickets = ref({ items: [], total: 0, page: 1, size: 12 }),
+  selected = ref(null),
   subject = ref(""),
   content = ref(""),
   busy = ref(false);
@@ -35,10 +38,10 @@ const faqs = [
     "陪玩确认完成且无退款争议的订单会计入可结算收入。陪玩可提交结算申请，运营者核对收款资料后转账，并登记付款凭证。",
   ],
 ];
-async function load() {
+async function load(page = 1) {
   if (auth.user)
     try {
-      tickets.value = await api("/tickets");
+      tickets.value = await api("/tickets?page=" + page);
     } catch {}
 }
 onMounted(load);
@@ -132,9 +135,16 @@ async function submit() {
           </p>
         </div>
         <section v-if="auth.user" class="panel section-panel">
-          <h2>我的工单</h2>
-          <p class="empty-inline" v-if="!tickets.length">暂时没有工单。</p>
-          <article v-for="t in tickets" :key="t.id" class="ticket">
+          <div class="section-top">
+            <h2>我的工单</h2>
+            <button class="text-button" @click="load(tickets.page)">
+              刷新工单
+            </button>
+          </div>
+          <p class="empty-inline" v-if="!tickets.items.length">
+            暂时没有工单。
+          </p>
+          <article v-for="t in tickets.items" :key="t.id" class="ticket">
             <div>
               <strong>{{ t.subject }}</strong
               ><span class="status-pill">{{
@@ -147,7 +157,24 @@ async function submit() {
               <p>{{ t.reply }}</p>
             </div>
             <small>{{ datetime(t.updated_at) }}</small>
+            <button
+              class="button secondary"
+              @click="selected = selected?.id === t.id ? null : t"
+            >
+              {{ selected?.id === t.id ? "收起记录" : "查看记录 / 追问" }}
+            </button>
+            <TicketConversation
+              v-if="selected?.id === t.id"
+              :ticket="t"
+              @updated="load(tickets.page)"
+            />
           </article>
+          <Pagination
+            :page="tickets.page"
+            :size="tickets.size"
+            :total="tickets.total"
+            @change="load"
+          />
         </section>
       </section>
     </div>

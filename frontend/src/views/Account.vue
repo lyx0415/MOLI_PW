@@ -62,7 +62,9 @@ async function changePassword() {
             ? '/studio'
             : auth.user.role === 'admin'
               ? '/admin'
-              : '/apply'
+              : auth.user.role === 'support'
+                ? '/support'
+                : '/apply'
         "
         class="panel"
         ><ShieldCheck /><strong>{{
@@ -70,7 +72,9 @@ async function changePassword() {
             ? "陪玩工作台"
             : auth.user.role === "admin"
               ? "运营管理"
-              : "申请成为陪玩"
+              : auth.user.role === "support"
+                ? "客服工作台"
+                : "申请成为陪玩"
         }}</strong
         ><ArrowUpRight :size="19"
       /></router-link>

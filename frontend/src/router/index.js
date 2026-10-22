@@ -52,6 +52,11 @@ const router = createRouter({
       meta: { title: "运营管理", auth: true, roles: ["admin"] },
     },
     {
+      path: "/support",
+      component: () => import("../views/Support.vue"),
+      meta: { title: "客服工作台", auth: true, roles: ["support", "admin"] },
+    },
+    {
       path: "/account",
       component: () => import("../views/Account.vue"),
       meta: { title: "个人中心", auth: true },

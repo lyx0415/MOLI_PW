@@ -76,6 +76,7 @@ export async function seedDemo(db, pass) {
     };
     await create("customer@demo.moli.test", "体验客户", "customer");
     await create("admin@demo.moli.test", "体验运营", "admin");
+    await create("support@demo.moli.test", "体验客服", "support");
     for (let i = 0; i < people.length; i++) {
       const [name, game, skill, rate, theme, tags, bio] = people[i];
       const userId = await create(
