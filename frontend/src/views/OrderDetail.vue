@@ -245,6 +245,15 @@ async function rate() {
         <div>
           <section class="panel section-panel">
             <h2>预约详情</h2>
+            <div v-if="o.experience?.mode === 'offline'" class="alert">
+              <strong>线下服务 · {{ o.experience.city }}</strong>
+              <p>预约场所：{{ o.experience.venue }}</p>
+              <p>服务说明：{{ o.experience.description }}</p>
+              <p>费用说明：{{ o.experience.feeNote }}</p>
+              <p class="small">
+                以上为下单时约定。变更请在订单内协商；无法履约时申请售后。
+              </p>
+            </div>
             <dl class="details-list">
               <div>
                 <dt>服务项目</dt>

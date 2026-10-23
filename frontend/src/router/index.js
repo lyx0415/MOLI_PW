@@ -12,6 +12,11 @@ const router = createRouter({
       meta: { title: "一起开黑，让快乐发生" },
     },
     {
+      path: "/experiences/:category?",
+      component: () => import("../views/Experiences.vue"),
+      meta: { title: "探索多彩陪伴" },
+    },
+    {
       path: "/players",
       component: () => import("../views/Players.vue"),
       meta: { title: "发现陪玩" },

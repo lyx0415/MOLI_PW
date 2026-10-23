@@ -55,8 +55,21 @@ export function ticketRoutes({ db, staff = false }) {
         `SELECT m.id,m.author_role,m.content,m.created_at,u.name FROM moli_ticket_messages m LEFT JOIN moli_users u ON u.id=m.user_id WHERE m.ticket_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT ${size} OFFSET ${(page - 1) * size}`,
         [ticket.id],
       );
+      const order = ticket.order_id
+        ? await tx.one(
+            "SELECT o.order_no,o.title,o.start_at,o.status,e.snapshot_json FROM moli_orders o LEFT JOIN moli_order_experiences e ON e.order_id=o.id WHERE o.id=?",
+            [ticket.order_id],
+          )
+        : null;
+      if (order) {
+        order.experience = order.snapshot_json
+          ? JSON.parse(order.snapshot_json)
+          : null;
+        delete order.snapshot_json;
+      }
       return {
         ticket,
+        order,
         items: items.reverse(),
         total: Number(total.n),
         page,

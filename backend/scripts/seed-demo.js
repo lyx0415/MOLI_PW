@@ -2,6 +2,7 @@ import { loadConfig } from "../lib/config.js";
 import { openDatabase, migrate } from "../lib/db.js";
 import { id, hashPassword } from "../lib/security.js";
 import { now } from "../lib/errors.js";
+import { categories } from "../lib/experiences.js";
 import { password } from "../lib/validation.js";
 export async function seedDemo(db, pass) {
   const hash = await hashPassword(password.parse(pass));
@@ -107,6 +108,36 @@ export async function seedDemo(db, pass) {
         "INSERT INTO moli_services (id,provider_id,game,title,skill,rate_cents,description,created_at) VALUES (?,?,?,?,?,?,?,?)",
         [id(), p, game, game + " · 一起开黑", skill, rate, bio, now()],
       );
+      const scene = categories[i + 1];
+      if (scene) {
+        const serviceId = id();
+        await tx.run(
+          "INSERT INTO moli_services (id,provider_id,game,title,skill,rate_cents,description,created_at) VALUES (?,?,?,?,?,?,?,?)",
+          [
+            serviceId,
+            p,
+            scene.name,
+            scene.name + " · 演示体验",
+            "演示服务",
+            12000,
+            "这是仅用于测试流程的虚构服务，请勿前往演示场所。" +
+              scene.description,
+            now(),
+          ],
+        );
+        await tx.run(
+          "INSERT INTO moli_service_details (service_id,category,city,venue,fee_note,review_status,revision,updated_at) VALUES (?,?,?,?,?,'approved',?,?)",
+          [
+            serviceId,
+            scene.id,
+            ["杭州", "成都", "上海", "广州", "深圳"][i],
+            "演示场馆（虚构，仅供流程测试）",
+            "演示小时价仅含陪伴服务；场地及设备费用不含在内，须预约前确认。",
+            id(),
+            now(),
+          ],
+        );
+      }
       for (let d = 0; d < 7; d++)
         await tx.run(
           "INSERT INTO moli_availability (id,provider_id,weekday,start_minute,end_minute) VALUES (?,?,?,?,?)",

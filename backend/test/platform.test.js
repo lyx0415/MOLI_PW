@@ -164,7 +164,7 @@ function nextSlot() {
 }
 async function book(ctx, customer) {
   const service = await ctx.db.one(
-    "SELECT s.* FROM moli_services s JOIN moli_providers p ON p.id=s.provider_id JOIN moli_users u ON u.id=p.user_id WHERE u.email='provider1@demo.moli.test' LIMIT 1",
+    "SELECT s.* FROM moli_services s JOIN moli_providers p ON p.id=s.provider_id JOIN moli_users u ON u.id=p.user_id WHERE u.email='provider1@demo.moli.test' AND s.game='英雄联盟' LIMIT 1",
   );
   const result = await customer.post("/orders", {
     serviceId: service.id,
@@ -308,7 +308,9 @@ test("approval is idempotent and cannot insert duplicate providers", async (t) =
 test("booking computes price on server and serializes concurrent overlapping reservations", async (t) => {
   const ctx = await fixture(t),
     c = await ctx.login("customer@demo.moli.test"),
-    s = await ctx.db.one("SELECT * FROM moli_services LIMIT 1");
+    s = await ctx.db.one(
+      "SELECT * FROM moli_services WHERE game='英雄联盟' LIMIT 1",
+    );
   const body = {
     serviceId: s.id,
     startAt: nextSlot(),
@@ -546,7 +548,9 @@ test("different customers cannot overlap one provider; refund denial restores pr
     ],
   );
   const other = await ctx.login("concurrent@test.test");
-  const s = await ctx.db.one("SELECT * FROM moli_services LIMIT 1"),
+  const s = await ctx.db.one(
+      "SELECT * FROM moli_services WHERE game='英雄联盟' LIMIT 1",
+    ),
     body = {
       serviceId: s.id,
       startAt: nextSlot(),
@@ -937,5 +941,280 @@ test("24 concurrent sessions can read role dashboards and submit tickets without
   durations.sort((a, b) => a - b);
   t.diagnostic(
     `24 sessions; 600 reads + 30 ticket writes; elapsed ${Math.round(performance.now() - started)}ms; read p95 ${Math.round(durations[Math.ceil(durations.length * 0.95) - 1])}ms. This is a bounded smoke load, not a production capacity guarantee.`,
+  );
+});
+
+const offlineService = {
+  category: "fitness",
+  game: "其他游戏",
+  title: "周末健身搭伴",
+  skill: "基础体能",
+  rateCents: 15000,
+  description: "轻量运动搭伴，提前沟通训练节奏与场地安排。",
+  active: true,
+  city: "苏州",
+  venue: "测试运动馆一层（虚构）",
+  feeNote: "仅含陪练费，场地费由客户另付，预约前确认。",
+};
+
+test("offline publication requires admin review, fresh revision and immutable booking terms", async (t) => {
+  const ctx = await fixture(t),
+    provider = await ctx.login("provider6@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test"),
+    customer = await ctx.login("customer@demo.moli.test"),
+    support = await ctx.login("support@demo.moli.test");
+  assert.equal(
+    (
+      await provider.post("/provider/services", {
+        ...offlineService,
+        venue: "",
+      })
+    ).status,
+    400,
+  );
+  const created = await provider.post("/provider/services", offlineService);
+  assert.equal(created.status, 201);
+  const serviceId = created.body.data.id;
+  const draft = async () =>
+    (
+      await provider.agent.get("/api/provider/dashboard")
+    ).body.data.services.find((s) => s.id === serviceId);
+  const review = (revision, extra = {}) =>
+    admin.post(`/admin/services/${serviceId}/review`, {
+      action: "approve",
+      reviewed: true,
+      revision,
+      ...extra,
+    });
+  const booking = (revision) =>
+    customer.post("/orders", {
+      serviceId,
+      serviceRevision: revision,
+      startAt: nextSlot(),
+      durationMinutes: 60,
+      contact: "test contact",
+      note: "",
+    });
+  let d = await draft();
+  assert.equal(d.review_status, "pending");
+  assert.equal(
+    (
+      await request(ctx.app).get(
+        "/api/providers?category=fitness&city=" + encodeURIComponent("苏州"),
+      )
+    ).body.data.total,
+    0,
+  );
+  assert.equal((await booking(d.revision)).status, 409);
+  assert.equal(
+    (
+      await support.post(`/admin/services/${serviceId}/review`, {
+        action: "approve",
+        reviewed: true,
+        revision: d.revision,
+      })
+    ).status,
+    403,
+  );
+  assert.equal((await review(d.revision, { reviewed: false })).status, 400);
+  assert.equal((await review(d.revision)).status, 200);
+  assert.equal((await review(d.revision)).status, 409);
+  d = await draft();
+  const listed = (
+    await request(ctx.app).get(
+      "/api/providers?category=fitness&city=" + encodeURIComponent("苏州"),
+    )
+  ).body.data;
+  assert.equal(listed.total, 1);
+  assert.equal(listed.items[0].min_rate_cents, 15000);
+  assert.equal(listed.items[0].services.length, 1);
+  assert.equal((await booking(id())).status, 409);
+  const order = await booking(d.revision);
+  assert.equal(order.status, 201, JSON.stringify(order.body));
+  const snapshot = (
+    await customer.agent.get("/api/orders/" + order.body.data.id)
+  ).body.data.experience;
+  assert.deepEqual(snapshot, {
+    category: "fitness",
+    mode: "offline",
+    city: "苏州",
+    venue: offlineService.venue,
+    feeNote: offlineService.feeNote,
+    description: offlineService.description,
+  });
+  assert.equal(
+    (
+      await provider.put("/provider/services/" + serviceId, {
+        ...offlineService,
+        city: "无锡",
+        venue: "另一个测试场馆",
+        rateCents: 18000,
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await review(d.revision)).status, 409);
+  assert.equal((await draft()).review_status, "pending");
+  assert.deepEqual(
+    (await customer.agent.get("/api/orders/" + order.body.data.id)).body.data
+      .experience,
+    snapshot,
+  );
+  assert.equal(
+    (
+      await request(ctx.app).get(
+        "/api/providers?category=fitness&city=" + encodeURIComponent("无锡"),
+      )
+    ).body.data.total,
+    0,
+  );
+  const oldOnline = await ctx.db.one(
+    "SELECT id FROM moli_services WHERE provider_id=? AND game='英雄联盟'",
+    [listed.items[0].id],
+  );
+  assert.equal(
+    (
+      await customer.post("/orders", {
+        serviceId: oldOnline.id,
+        startAt: nextSlot(),
+        durationMinutes: 60,
+        contact: "test",
+        note: "",
+      })
+    ).status,
+    409,
+    "online and offline must share occupancy",
+  );
+  const ticket = await customer.post("/tickets", {
+    orderId: order.body.data.id,
+    subject: "线下场所确认",
+    content: "请帮助核对订单保存的预约场所和费用。",
+  });
+  assert.equal(ticket.status, 201);
+  const thread = await support.agent.get(
+    `/api/support/tickets/${ticket.body.data.id}/messages`,
+  );
+  assert.equal(thread.status, 200);
+  assert.deepEqual(thread.body.data.order.experience, snapshot);
+  assert.equal("contact" in thread.body.data.order, false);
+  assert.equal(
+    (await support.agent.get("/api/orders/" + order.body.data.id)).status,
+    403,
+  );
+  assert.equal(
+    (await provider.agent.get(`/api/tickets/${ticket.body.data.id}/messages`))
+      .status,
+    403,
+  );
+  await migrate(ctx.db); // additive migration remains safe to rerun
+});
+
+test("discovery binds city, category, price and mode to the same published service", async (t) => {
+  const ctx = await fixture(t),
+    provider = await ctx.login("provider6@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test");
+  const first = (await provider.post("/provider/services", offlineService)).body
+    .data.id;
+  const second = (
+    await provider.post("/provider/services", {
+      ...offlineService,
+      category: "ktv",
+      city: "无锡",
+      rateCents: 2000,
+    })
+  ).body.data.id;
+  for (const serviceId of [first, second]) {
+    const d = await ctx.db.one(
+      "SELECT revision FROM moli_service_details WHERE service_id=?",
+      [serviceId],
+    );
+    assert.equal(
+      (
+        await admin.post(`/admin/services/${serviceId}/review`, {
+          action: "approve",
+          reviewed: true,
+          revision: d.revision,
+        })
+      ).status,
+      200,
+    );
+  }
+  const search = async (params) =>
+    (await request(ctx.app).get("/api/providers").query(params)).body.data;
+  assert.equal(
+    (await search({ category: "fitness", city: "苏州", maxPrice: 3000 })).total,
+    0,
+  );
+  assert.equal((await search({ category: "fitness", city: "无锡" })).total, 0);
+  assert.equal(
+    (await search({ category: "fitness", mode: "online" })).total,
+    0,
+  );
+  const result = await search({
+    category: "fitness",
+    city: "苏州",
+    sort: "price",
+  });
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].min_rate_cents, 15000);
+  const site = (await request(ctx.app).get("/api/site")).body.data;
+  assert.ok(
+    site.categories.find((c) => c.id === "fitness").cities.includes("苏州"),
+  );
+  const d = await ctx.db.one(
+    "SELECT revision FROM moli_service_details WHERE service_id=?",
+    [first],
+  );
+  assert.equal(
+    (
+      await admin.post(`/admin/services/${first}/review`, {
+        action: "reject",
+        revision: d.revision,
+        reason: "场所需要重新核对",
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await search({ category: "fitness", city: "苏州" })).total, 0);
+  assert.equal(
+    (await request(ctx.app).get("/api/site")).body.data.categories
+      .find((c) => c.id === "fitness")
+      .cities.includes("苏州"),
+    false,
+  );
+});
+
+test("offline-only applicants can join without publishing an unreviewed initial service", async (t) => {
+  const ctx = await fixture(t),
+    customer = await ctx.login("customer@demo.moli.test"),
+    admin = await ctx.login("admin@demo.moli.test");
+  const application = await customer.post("/application", {
+    ...offlineService,
+    nickname: "运动搭子",
+    bio: "这是一段用于审核的运动经验介绍，介绍陪练节奏与服务范围。",
+    contact: "test contact",
+    tags: ["运动"],
+    adult: true,
+    terms: true,
+  });
+  assert.equal(application.status, 201);
+  assert.equal(
+    (
+      await admin.post(
+        "/admin/applications/" + application.body.data.id + "/review",
+        { action: "approve", identityReviewed: true },
+      )
+    ).status,
+    200,
+  );
+  const dashboard = (await customer.agent.get("/api/provider/dashboard")).body
+    .data;
+  assert.equal(dashboard.services[0].category, "fitness");
+  assert.equal(dashboard.services[0].review_status, "pending");
+  assert.equal(dashboard.services[0].active, 0);
+  assert.equal(
+    (await request(ctx.app).get("/api/providers/" + dashboard.provider.id)).body
+      .data.services.length,
+    0,
   );
 });

@@ -8,7 +8,10 @@ defineEmits(["favorite"]);
 <template>
   <article class="provider-card">
     <router-link
-      :to="'/players/' + provider.id"
+      :to="{
+        path: '/players/' + provider.id,
+        query: { service: provider.services?.[0]?.id },
+      }"
       class="portrait-link"
       :aria-label="'查看' + provider.nickname + '的主页'"
       ><AvatarArt :name="provider.nickname" :theme="provider.theme" /><span
@@ -27,9 +30,12 @@ defineEmits(["favorite"]);
     </button>
     <div class="provider-body">
       <div class="card-title">
-        <router-link :to="'/players/' + provider.id">{{
-          provider.nickname
-        }}</router-link
+        <router-link
+          :to="{
+            path: '/players/' + provider.id,
+            query: { service: provider.services?.[0]?.id },
+          }"
+          >{{ provider.nickname }}</router-link
         ><span v-if="provider.rating" class="rating"
           ><Star :size="13" fill="currentColor" />{{ provider.rating.toFixed(1)
           }}<small>({{ provider.review_count }})</small></span
@@ -39,6 +45,15 @@ defineEmits(["favorite"]);
         <Gamepad2 :size="14" />{{ provider.services?.[0]?.game }}<span>·</span
         >{{ provider.services?.[0]?.skill }}
       </p>
+      <p
+        v-if="
+          provider.services?.[0]?.category &&
+          provider.services[0].category !== 'esports'
+        "
+        class="small subtle"
+      >
+        线下 · {{ provider.services[0].service_city }}
+      </p>
       <div class="tags">
         <span v-for="tag in provider.tags" :key="tag">{{ tag }}</span>
       </div>
@@ -47,7 +62,10 @@ defineEmits(["favorite"]);
           ><strong>{{ money(provider.min_rate_cents) }}</strong
           ><small>/ 小时起</small></span
         ><router-link
-          :to="'/players/' + provider.id"
+          :to="{
+            path: '/players/' + provider.id,
+            query: { service: provider.services?.[0]?.id },
+          }"
           class="card-arrow"
           :aria-label="'预约' + provider.nickname"
           ><ArrowUpRight :size="18"

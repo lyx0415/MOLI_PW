@@ -9,6 +9,8 @@ import {
   pagination,
   text,
 } from "../lib/validation.js";
+import { detailColumns } from "../lib/experiences.js";
+import { saveService } from "../lib/service-publishing.js";
 import { createOrder, orderAccess, transitionOrder } from "../lib/orders.js";
 import { ticketRoutes } from "./tickets.js";
 
@@ -117,6 +119,7 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
     const data = z
       .object({
         serviceId: z.uuid(),
+        serviceRevision: z.uuid().optional(),
         startAt: z.iso.datetime({ offset: true }),
         durationMinutes: z
           .number()
@@ -165,6 +168,19 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
   });
   router.get("/orders/:id", async (req, res) => {
     const o = await orderAccess(db, req.params.id, req.user);
+    const snapshot = await db.one(
+      "SELECT snapshot_json FROM moli_order_experiences WHERE order_id=?",
+      [o.id],
+    );
+    o.experience = snapshot
+      ? JSON.parse(snapshot.snapshot_json)
+      : {
+          category: "esports",
+          mode: "online",
+          city: "",
+          venue: "",
+          feeNote: "",
+        };
     // Unpaid customer contact data is not disclosed to providers.
     if (req.user.id === o.provider_user_id && o.payment_status === "unpaid") {
       o.contact = "";
@@ -234,6 +250,19 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
   router.post("/orders/:id/messages", async (req, res) => {
     const data = z.object({ content: text(1000) }).parse(req.body);
     const o = await orderAccess(db, req.params.id, req.user);
+    const snapshot = await db.one(
+      "SELECT snapshot_json FROM moli_order_experiences WHERE order_id=?",
+      [o.id],
+    );
+    o.experience = snapshot
+      ? JSON.parse(snapshot.snapshot_json)
+      : {
+          category: "esports",
+          mode: "online",
+          city: "",
+          venue: "",
+          feeNote: "",
+        };
     assert(
       o.payment_status === "paid" &&
         !["cancelled", "completed"].includes(o.status),
@@ -316,7 +345,7 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
   router.get("/provider/dashboard", async (req, res) => {
     const provider = req.provider;
     const services = await db.all(
-      "SELECT * FROM moli_services WHERE provider_id=?",
+      `SELECT s.*,${detailColumns} FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE s.provider_id=?`,
       [provider.id],
     );
     const availability = await db.all(
@@ -367,43 +396,18 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
   router.post("/provider/services", async (req, res) => {
     const data = serviceSchema.parse(req.body),
       serviceId = id();
-    await db.run(
-      "INSERT INTO moli_services (id,provider_id,game,title,skill,rate_cents,description,active,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-      [
-        serviceId,
-        req.provider.id,
-        data.game,
-        data.title,
-        data.skill,
-        data.rateCents,
-        data.description,
-        data.active ? 1 : 0,
-        now(),
-      ],
-    );
+    await saveService(db, req.provider.id, serviceId, data, req.user.id, true);
     ok(res, { id: serviceId }, "服务已保存", 201);
   });
   router.put("/provider/services/:id", async (req, res) => {
     const data = serviceSchema.parse(req.body);
-    assert(
-      await db.one(
-        "SELECT id FROM moli_services WHERE id=? AND provider_id=?",
-        [req.params.id, req.provider.id],
-      ),
-      404,
-      "服务不存在",
-    );
-    await db.run(
-      "UPDATE moli_services SET game=?,title=?,skill=?,rate_cents=?,description=?,active=? WHERE id=?",
-      [
-        data.game,
-        data.title,
-        data.skill,
-        data.rateCents,
-        data.description,
-        data.active ? 1 : 0,
-        req.params.id,
-      ],
+    await saveService(
+      db,
+      req.provider.id,
+      req.params.id,
+      data,
+      req.user.id,
+      false,
     );
     ok(res);
   });

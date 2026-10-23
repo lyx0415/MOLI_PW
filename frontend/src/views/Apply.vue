@@ -9,6 +9,7 @@ import {
   CheckCircle2,
 } from "lucide-vue-next";
 import { api, auth, notify } from "../lib/api.js";
+import ExperienceFields from "../components/ExperienceFields.vue";
 import { site } from "../lib/site.js";
 const router = useRouter(),
   application = ref(null),
@@ -19,6 +20,9 @@ const router = useRouter(),
     bio: "",
     city: "",
     contact: "",
+    category: "esports",
+    venue: "",
+    feeNote: "",
     game: "英雄联盟",
     skill: "",
     rate: 50,
@@ -39,7 +43,14 @@ onMounted(async () => {
     application.value = await api("/application");
     if (application.value?.status === "rejected") {
       const d = application.value.data;
-      form.value = { ...d, rate: d.rateCents / 100, tags: d.tags.join(",") };
+      form.value = {
+        category: "esports",
+        venue: "",
+        feeNote: "",
+        ...d,
+        rate: d.rateCents / 100,
+        tags: d.tags.join(","),
+      };
     }
   } catch {
   } finally {
@@ -56,6 +67,9 @@ async function submit() {
         bio: form.value.bio,
         city: form.value.city,
         contact: form.value.contact,
+        category: form.value.category,
+        venue: form.value.venue,
+        feeNote: form.value.feeNote,
         game: form.value.game,
         skill: form.value.skill,
         rateCents: Math.round(Number(form.value.rate) * 100),
@@ -91,7 +105,7 @@ async function refresh() {
       <div>
         <span class="eyebrow">YOUR SKILLS, OUR STAGE</span>
         <h1>让热爱，拥有新的舞台。</h1>
-        <p>成为茉莉陪玩，用技能和耐心陪伴每一场游戏。</p>
+        <p>成为茉莉陪玩，用技能和耐心连接线上开黑与线下生活。</p>
       </div>
     </div>
     <div class="help-grid">
@@ -131,7 +145,9 @@ async function refresh() {
         <div v-else-if="application?.status === 'approved'" class="empty-state">
           <CheckCircle2 :size="38" />
           <h2>欢迎成为茉莉陪玩</h2>
-          <p>刷新账号权限后就可以进入工作台。</p>
+          <p>
+            刷新账号权限后就可以进入工作台。线下服务还须通过场所与内容审核才会展示。
+          </p>
           <button class="button" @click="refresh">进入工作台</button>
         </div>
         <template v-else
@@ -160,8 +176,9 @@ async function refresh() {
                 maxlength="120"
                 placeholder="邮箱、QQ或手机号"
             /></label>
+            <ExperienceFields v-model="form" />
             <div class="form-grid">
-              <label class="field"
+              <label v-if="form.category === 'esports'" class="field"
                 >擅长游戏<select v-model="form.game">
                   <option v-for="g in site.games" :key="g">{{ g }}</option>
                 </select></label

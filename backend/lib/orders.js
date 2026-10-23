@@ -1,4 +1,5 @@
 import { assert, now } from "./errors.js";
+import { detailColumns, experience } from "./experiences.js";
 import { id, audit } from "./security.js";
 
 export function bookingWindow(startAt, durationMinutes) {
@@ -36,7 +37,7 @@ export async function createOrder(db, user, data, config) {
   const window = bookingWindow(data.startAt, data.durationMinutes);
   return db.tx(async (tx) => {
     await tx.one("SELECT id FROM moli_users WHERE id=?" + tx.lock, [user.id]);
-    const service = await tx.one("SELECT * FROM moli_services WHERE id=?", [
+    let service = await tx.one("SELECT * FROM moli_services WHERE id=?", [
       data.serviceId,
     ]);
     assert(service, 404, "服务不存在");
@@ -44,6 +45,17 @@ export async function createOrder(db, user, data, config) {
       "SELECT p.*,u.state AS user_state FROM moli_providers p JOIN moli_users u ON p.user_id=u.id WHERE p.id=?" +
         tx.lock,
       [service.provider_id],
+    );
+    service = await tx.one(
+      `SELECT s.*,${detailColumns} FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE s.id=?`,
+      [data.serviceId],
+    );
+    assert(service.review_status === "approved", 409, "服务尚未审核通过");
+    assert(
+      service.category === "esports" ||
+        data.serviceRevision === service.revision,
+      409,
+      "服务信息已更新，请刷新后重新确认场所与费用",
     );
     assert(
       provider.status === "active" &&
@@ -104,6 +116,10 @@ export async function createOrder(db, user, data, config) {
         now(),
         now(),
       ],
+    );
+    await tx.run(
+      "INSERT INTO moli_order_experiences (order_id,snapshot_json) VALUES (?,?)",
+      [orderId, JSON.stringify(experience(service))],
     );
     await audit(tx, user.id, "order.create", orderId);
     return tx.one("SELECT * FROM moli_orders WHERE id=?", [orderId]);

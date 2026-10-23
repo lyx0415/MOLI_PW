@@ -47,6 +47,7 @@ async function signOut() {
         </button>
         <nav class="main-nav" :class="{ open: menu }" aria-label="主导航">
           <router-link to="/" exact-active-class="active">首页</router-link
+          ><router-link to="/experiences">场景探索</router-link
           ><router-link to="/players">发现陪玩</router-link
           ><router-link to="/apply"
             >成为陪玩<ArrowUpRight :size="13" /></router-link

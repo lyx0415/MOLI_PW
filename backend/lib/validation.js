@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { categories, categoryFor } from "./experiences.js";
 export const games = [
   "英雄联盟",
   "王者荣耀",
@@ -17,26 +18,53 @@ export const password = z
   .min(10)
   .max(128)
   .refine((s) => /[a-zA-Z]/.test(s) && /[0-9]/.test(s), "密码须包含字母和数字");
-export const applicationSchema = z.object({
-  nickname: text(30),
-  bio: text(1000, 20),
-  city: text(50, 0),
-  contact: text(120),
-  game: z.enum(games),
-  skill: text(60),
-  rateCents: z.number().int().min(100).max(200000),
-  tags: z.array(text(15)).max(5),
-  adult: z.literal(true),
-  terms: z.literal(true),
-});
-export const serviceSchema = z.object({
-  game: z.enum(games),
-  title: text(80),
-  skill: text(60),
-  rateCents: z.number().int().min(100).max(200000),
-  description: text(1000, 10),
-  active: z.boolean(),
-});
+const checkExperience = (data, ctx) => {
+  if (data.category === "esports" && !games.includes(data.game))
+    ctx.addIssue({
+      code: "custom",
+      path: ["game"],
+      message: "请选择支持的游戏",
+    });
+  if (categoryFor(data.category).mode === "offline")
+    for (const key of ["city", "venue", "feeNote"])
+      if (!data[key])
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: "线下服务须填写城市、公开营业场所和费用说明",
+        });
+};
+export const applicationSchema = z
+  .object({
+    nickname: text(30),
+    bio: text(1000, 20),
+    city: text(50, 0),
+    contact: text(120),
+    category: z.enum(categories.map((c) => c.id)).default("esports"),
+    venue: text(200, 0).default(""),
+    feeNote: text(500, 0).default(""),
+    game: text(50),
+    skill: text(60),
+    rateCents: z.number().int().min(100).max(200000),
+    tags: z.array(text(15)).max(5),
+    adult: z.literal(true),
+    terms: z.literal(true),
+  })
+  .superRefine(checkExperience);
+export const serviceSchema = z
+  .object({
+    category: z.enum(categories.map((c) => c.id)).default("esports"),
+    city: text(50, 0).default(""),
+    venue: text(200, 0).default(""),
+    feeNote: text(500, 0).default(""),
+    game: text(50),
+    title: text(80),
+    skill: text(60),
+    rateCents: z.number().int().min(100).max(200000),
+    description: text(1000, 10),
+    active: z.boolean(),
+  })
+  .superRefine(checkExperience);
 export const scheduleSchema = z
   .array(
     z.object({

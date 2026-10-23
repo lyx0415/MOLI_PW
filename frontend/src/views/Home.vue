@@ -16,6 +16,7 @@ import {
   Crown,
   Compass,
 } from "lucide-vue-next";
+import SceneArt from "../components/SceneArt.vue";
 import ProviderCard from "../components/ProviderCard.vue";
 import BrandMark from "../components/BrandMark.vue";
 import { api, auth, notify } from "../lib/api.js";
@@ -220,6 +221,29 @@ onMounted(load);
         {{ site.announcements[0].title }} · {{ site.announcements[0].content }}
       </p>
       <router-link to="/help"><ArrowUpRight :size="18" /></router-link>
+    </section>
+    <section class="container home-experiences">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">MORE THAN A GAME</span>
+          <h2>快乐不止一局，陪伴不止线上。</h2>
+        </div>
+        <router-link class="text-link" to="/experiences"
+          >探索全部场景<ArrowUpRight :size="18"
+        /></router-link>
+      </div>
+      <div class="home-scene-grid">
+        <router-link
+          v-for="c in site.categories"
+          :key="c.id"
+          :to="'/experiences/' + c.id"
+          class="home-scene"
+          ><SceneArt :category="c.id" /><strong>{{ c.name }}</strong
+          ><span>{{
+            c.mode === "online" ? "线上相聚" : "同城相伴"
+          }}</span></router-link
+        >
+      </div>
     </section>
   </div>
 </template>

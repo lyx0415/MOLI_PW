@@ -43,6 +43,7 @@ const tab = ref("overview"),
 const tabs = [
   ["overview", "运营总览", LayoutDashboard],
   ["applications", "入驻审核", ClipboardCheck],
+  ["services", "线下服务审核", ClipboardCheck],
   ["orders", "订单与退款", ClipboardList],
   ["users", "账号管理", UserRound],
   ["providers", "陪玩管理", ShieldCheck],
@@ -53,6 +54,8 @@ const tabs = [
   ["audit", "操作日志", ShieldCheck],
 ];
 const titles = {
+  serviceApprove: "通过服务审核",
+  serviceReject: "驳回或下架服务",
   approve: "通过入驻审核",
   reject: "拒绝入驻申请",
   refund: "确认原路退款",
@@ -117,7 +120,17 @@ async function submit() {
   busy.value = true;
   const t = target.value;
   try {
-    if (["approve", "reject"].includes(operation.value))
+    if (["serviceApprove", "serviceReject"].includes(operation.value))
+      await api("/admin/services/" + t.id + "/review", {
+        method: "POST",
+        body: {
+          action: operation.value === "serviceApprove" ? "approve" : "reject",
+          revision: t.revision,
+          reviewed: identityReviewed.value,
+          reason: reason.value,
+        },
+      });
+    else if (["approve", "reject"].includes(operation.value))
       await api("/admin/applications/" + t.id + "/review", {
         method: "POST",
         body: {
@@ -380,6 +393,46 @@ async function toggleAnnouncement(row) {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div v-if="tab === 'services'">
+              <p class="field-hint">
+                核对公开场所、服务边界、额外费用及所需资质。通过后可预约；驳回或下架不取消已有订单，请协调履约或退款。
+              </p>
+              <article
+                v-for="s in rows"
+                :key="s.id"
+                class="panel section-panel"
+              >
+                <h3>{{ s.title }} · {{ s.nickname }}</h3>
+                <p>
+                  {{ s.game }} · {{ s.skill }} · {{ money(s.rate_cents) }} /
+                  小时
+                </p>
+                <p>{{ s.description }}</p>
+                <p>{{ s.service_city }} · {{ s.venue }}</p>
+                <p>费用说明：{{ s.fee_note }}</p>
+                <p>
+                  审核状态：{{
+                    {
+                      pending: "待审核",
+                      approved: "已通过",
+                      rejected: "已驳回",
+                    }[s.review_status]
+                  }}
+                  · {{ s.active ? "已上架" : "未上架" }}
+                </p>
+                <p v-if="s.review_reason">处理原因：{{ s.review_reason }}</p>
+                <div class="actions-row">
+                  <button class="button" @click="open('serviceApprove', s)">
+                    通过服务</button
+                  ><button
+                    class="button secondary"
+                    @click="open('serviceReject', s)"
+                  >
+                    驳回 / 下架
+                  </button>
+                </div>
+              </article>
             </div>
             <div class="table-wrap" v-if="tab === 'orders' && rows.length">
               <table>
@@ -676,12 +729,33 @@ async function toggleAnnouncement(row) {
     <dialog ref="modal" class="modal wide">
       <form @submit.prevent="submit">
         <h2>{{ titles[operation] }}</h2>
+        <template
+          v-if="operation === 'serviceApprove' || operation === 'serviceReject'"
+        >
+          <p>
+            {{ target?.title }} · {{ target?.service_city }} ·
+            {{ target?.venue }}
+          </p>
+          <p>{{ target?.description }}</p>
+          <p>{{ target?.fee_note }}</p>
+          <label v-if="operation === 'serviceApprove'" class="checkbox-line"
+            ><input
+              type="checkbox"
+              v-model="identityReviewed"
+              required
+            />已核对服务内容、公开场所、费用和所需资质</label
+          >
+        </template>
         <template v-if="operation === 'approve'"
           ><p>
             {{ target?.data.nickname }} · {{ target?.data.game }} ·
             {{ target?.data.skill }}
           </p>
           <p class="review-description">{{ target?.data.bio }}</p>
+          <p v-if="target?.data.venue">
+            线下申请：{{ target?.data.city }} · {{ target?.data.venue }} ·
+            {{ target?.data.feeNote }}。入驻通过后请到线下服务审核处理。
+          </p>
           <p>
             {{ money(target?.data.rateCents) }} / 小时 ·
             {{ target?.data.contact }}
@@ -737,6 +811,7 @@ async function toggleAnnouncement(row) {
           v-if="
             [
               'reject',
+              'serviceReject',
               'refundReject',
               'reply',
               'payoutPaid',

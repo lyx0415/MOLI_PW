@@ -23,6 +23,7 @@ import {
   weekdays,
   notify,
 } from "../lib/api.js";
+import ExperienceFields from "../components/ExperienceFields.vue";
 import { site } from "../lib/site.js";
 const router = useRouter(),
   tab = ref("overview"),
@@ -91,14 +92,22 @@ function editService(s) {
   serviceId.value = s?.id || "";
   serviceForm.value = s
     ? {
-        game: s.game,
+        category: s.category || "esports",
+        city: s.service_city || "",
+        venue: s.venue || "",
+        feeNote: s.fee_note || "",
+        game: s.category && s.category !== "esports" ? "英雄联盟" : s.game,
         title: s.title,
         skill: s.skill,
         rate: s.rate_cents / 100,
         description: s.description,
-        active: Boolean(s.active),
+        active: Boolean(s.requested_active ?? s.active),
       }
     : {
+        category: "esports",
+        city: "",
+        venue: "",
+        feeNote: "",
         game: "英雄联盟",
         title: "",
         skill: "",
@@ -117,6 +126,10 @@ async function saveService() {
       {
         method: serviceId.value ? "PUT" : "POST",
         body: {
+          category: f.category,
+          city: f.city,
+          venue: f.venue,
+          feeNote: f.feeNote,
           game: f.game,
           title: f.title,
           skill: f.skill,
@@ -350,9 +363,16 @@ async function requestPayout() {
             <article v-for="s in data.services" :key="s.id" class="service-row">
               <div>
                 <strong>{{ s.title }}</strong>
-                <p>{{ s.game }} · {{ s.skill }}</p>
+                <p>{{ s.game }} · {{ s.skill }} {{ s.service_city }}</p>
+                <p v-if="s.review_reason">审核意见：{{ s.review_reason }}</p>
                 <span class="status-pill">{{
-                  s.active ? "已上架" : "已下架"
+                  s.review_status === "pending"
+                    ? "待审核"
+                    : s.review_status === "rejected"
+                      ? "审核未通过"
+                      : s.active
+                        ? "已上架"
+                        : "已下架"
                 }}</span>
               </div>
               <strong>{{ money(s.rate_cents) }}<small>/小时</small></strong
@@ -507,8 +527,9 @@ async function requestPayout() {
         <label class="field"
           >服务标题<input v-model="serviceForm.title" required maxlength="80"
         /></label>
+        <ExperienceFields v-model="serviceForm" />
         <div class="form-grid">
-          <label class="field"
+          <label v-if="serviceForm.category === 'esports'" class="field"
             >游戏<select v-model="serviceForm.game">
               <option v-for="g in site.games" :key="g">{{ g }}</option>
             </select></label

@@ -62,7 +62,10 @@ async function load() {
   try {
     p.value = await api("/providers/" + route.params.id);
     channels.value = await api("/payments/channels");
-    selected.value = p.value.services[0]?.id || "";
+    selected.value =
+      p.value.services.find((s) => s.id === route.query.service)?.id ||
+      p.value.services[0]?.id ||
+      "";
     if (auth.user) saved.value = (await api("/favorites")).includes(p.value.id);
   } catch {
     failed.value = true;
@@ -97,6 +100,7 @@ async function book() {
       method: "POST",
       body: {
         serviceId: selected.value,
+        serviceRevision: service.value?.revision || undefined,
         startAt: new Date(
           date.value + "T" + time.value + ":00+08:00",
         ).toISOString(),
@@ -179,7 +183,12 @@ async function book() {
               /><span
                 ><strong>{{ s.title }}</strong
                 ><small>{{ s.game }} · {{ s.skill }}</small>
-                <p>{{ s.description }}</p></span
+                <p>{{ s.description }}</p>
+                <p v-if="s.category !== 'esports'">
+                  线下 · {{ s.service_city }} · {{ s.venue }}<br />费用说明：{{
+                    s.fee_note
+                  }}
+                </p></span
               ><b>{{ money(s.rate_cents) }}<small>/小时</small></b></label
             >
           </div>
@@ -221,6 +230,11 @@ async function book() {
           <span class="eyebrow">BOOK A GOOD TIME</span>
           <h2>预约一段好时光</h2>
           <p class="subtle">{{ service?.title || "请选择服务" }}</p>
+          <p v-if="service?.category !== 'esports' && service" class="alert">
+            线下服务：{{ service.service_city }} · {{ service.venue }}。{{
+              service.fee_note
+            }}。下单前请确认场所、人数与费用，变更请在订单内沟通。
+          </p>
           <label class="field"
             >日期<input required type="date" v-model="date" :min="minDate"
           /></label>

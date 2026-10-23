@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onUnmounted } from "vue";
-import { api, datetime, notify } from "../lib/api.js";
+import { api, datetime, notify, statusLabels } from "../lib/api.js";
 import Pagination from "./Pagination.vue";
 const props = defineProps({
   ticket: Object,
@@ -78,6 +78,21 @@ async function submit() {
     </div>
     <p v-if="failed" class="alert error">记录加载失败，请刷新后重试。</p>
     <template v-else-if="data">
+      <div v-if="data.order" class="alert">
+        <strong>关联预约：{{ data.order.title }}</strong>
+        <p>
+          {{ data.order.order_no }} · {{ datetime(data.order.start_at) }} ·
+          {{ statusLabels[data.order.status] }}
+        </p>
+        <template v-if="data.order.experience?.mode === 'offline'"
+          ><p>
+            预约场所：{{ data.order.experience.city }} ·
+            {{ data.order.experience.venue }}
+          </p>
+          <p>服务说明：{{ data.order.experience.description }}</p>
+          <p>费用说明：{{ data.order.experience.feeNote }}</p></template
+        >
+      </div>
       <p v-if="!data.items.length" class="empty-inline">暂无回复。</p>
       <article v-for="m in data.items" :key="m.id" class="ticket-reply">
         <strong

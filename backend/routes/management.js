@@ -4,11 +4,86 @@ import { assert, ok, now } from "../lib/errors.js";
 import { id, audit } from "../lib/security.js";
 import { text, pagination } from "../lib/validation.js";
 import { ticketRoutes } from "./tickets.js";
+import { detailColumns, categoryFor } from "../lib/experiences.js";
 import { listPage } from "../lib/listing.js";
 
 export function managementRoutes({ db, requireAuth, requireRole }) {
   const router = Router();
   router.use(requireAuth, requireRole("admin"));
+  router.get("/services", async (req, res) => {
+    ok(
+      res,
+      await listPage(db, req.query, {
+        select: `SELECT s.*,p.nickname,${detailColumns}`,
+        from: "FROM moli_services s JOIN moli_providers p ON p.id=s.provider_id JOIN moli_service_details d ON d.service_id=s.id WHERE d.category<>'esports'",
+        orderBy:
+          "CASE WHEN d.review_status='pending' THEN 0 ELSE 1 END,d.updated_at DESC,s.id",
+      }),
+    );
+  });
+  router.post("/services/:id/review", async (req, res) => {
+    const data = z
+      .object({
+        action: z.enum(["approve", "reject"]),
+        revision: z.uuid(),
+        reviewed: z.boolean().default(false),
+        reason: text(500, 0).default(""),
+      })
+      .parse(req.body);
+    assert(
+      data.action !== "approve" || data.reviewed,
+      400,
+      "请核对服务内容、场所、费用和所需资质",
+    );
+    assert(
+      data.action !== "reject" || data.reason.length >= 3,
+      400,
+      "请填写至少3字的处理原因",
+    );
+    await db.tx(async (tx) => {
+      const service = await tx.one(
+        "SELECT provider_id FROM moli_services WHERE id=?",
+        [req.params.id],
+      );
+      assert(service, 404, "服务不存在");
+      await tx.one("SELECT id FROM moli_providers WHERE id=?" + tx.lock, [
+        service.provider_id,
+      ]);
+      const detail = await tx.one(
+        "SELECT * FROM moli_service_details WHERE service_id=?" + tx.lock,
+        [req.params.id],
+      );
+      assert(detail && detail.category !== "esports", 404, "线下服务不存在");
+      assert(
+        detail.revision === data.revision,
+        409,
+        "服务内容或审核结果已变化，请刷新后核对",
+      );
+      const approved = data.action === "approve";
+      await tx.run(
+        "UPDATE moli_service_details SET review_status=?,review_reason=?,revision=?,updated_at=? WHERE service_id=?",
+        [
+          approved ? "approved" : "rejected",
+          data.reason,
+          id(),
+          now(),
+          req.params.id,
+        ],
+      );
+      await tx.run("UPDATE moli_services SET active=? WHERE id=?", [
+        approved && detail.requested_active ? 1 : 0,
+        req.params.id,
+      ]);
+      await audit(
+        tx,
+        req.user.id,
+        "service." + data.action,
+        req.params.id,
+        data.reason,
+      );
+    });
+    ok(res);
+  });
   router.get("/overview", async (req, res) =>
     ok(
       res,
@@ -80,7 +155,8 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
       assert(user.role === "customer", 409, "账号角色已变化，请先核对权限");
       if (data.action === "approve") {
         const d = JSON.parse(a.data_json),
-          providerId = id();
+          providerId = id(),
+          serviceId = id();
         await tx.run(
           "INSERT INTO moli_providers (id,user_id,nickname,bio,city,tags_json,verified_at,created_at) VALUES (?,?,?,?,?,?,?,?)",
           [
@@ -100,16 +176,29 @@ export function managementRoutes({ db, requireAuth, requireRole }) {
         await tx.run(
           "INSERT INTO moli_services (id,provider_id,game,title,skill,rate_cents,description,created_at) VALUES (?,?,?,?,?,?,?,?)",
           [
-            id(),
+            serviceId,
             providerId,
-            d.game,
-            d.game + " · 轻松开黑",
+            categoryFor(d.category || "esports").mode === "offline"
+              ? categoryFor(d.category).name
+              : d.game,
+            d.category && d.category !== "esports"
+              ? categoryFor(d.category).name + " · 同城陪伴"
+              : d.game + " · 轻松开黑",
             d.skill,
             d.rateCents,
             d.bio,
             now(),
           ],
         );
+        if (d.category && d.category !== "esports") {
+          await tx.run("UPDATE moli_services SET active=0 WHERE id=?", [
+            serviceId,
+          ]);
+          await tx.run(
+            "INSERT INTO moli_service_details (service_id,category,city,venue,fee_note,review_status,revision,updated_at) VALUES (?,?,?,?,?,'pending',?,?)",
+            [serviceId, d.category, d.city, d.venue, d.feeNote, id(), now()],
+          );
+        }
       }
       await tx.run(
         "UPDATE moli_applications SET status=?,reason=?,reviewed_by=?,reviewed_at=? WHERE id=?",

@@ -386,3 +386,125 @@ test("protected routes redirect, expired sessions return to login, mobile role n
   await expect(page).toHaveURL(/\/login/);
   expect(errors).toEqual([]);
 });
+
+test("scene discovery and reviewed offline service work across provider, admin and customer", async ({
+  page,
+  browser,
+}) => {
+  const contexts = await Promise.all([
+    browser.newContext(),
+    browser.newContext(),
+  ]);
+  const provider = await contexts[0].newPage(),
+    admin = await contexts[1].newPage();
+  try {
+    await page.goto("/experiences");
+    await expect(page.locator(".experience-card")).toHaveCount(6);
+    await page.getByLabel("服务城市", { exact: true }).fill("苏州");
+    await page
+      .getByRole("heading", { name: "把喜欢的事，安排进生活。" })
+      .click();
+    await page
+      .locator(".experience-card")
+      .filter({ hasText: "健身陪练" })
+      .click();
+    await expect(page.getByText("好时光，等一位先行者")).toBeVisible();
+    await login(provider, "provider6@demo.moli.test");
+    await provider.goto("/studio");
+    await provider
+      .getByRole("button", { name: "服务项目", exact: true })
+      .click();
+    await provider
+      .getByRole("button", { name: "新增服务", exact: true })
+      .click();
+    const dialog = provider.locator("dialog[open]");
+    await dialog.getByLabel("服务标题").fill("苏州周末运动搭伴");
+    await dialog.getByLabel("服务场景").selectOption("fitness");
+    await dialog.getByLabel("服务城市", { exact: true }).fill("苏州");
+    await dialog
+      .getByLabel("服务场所", { exact: true })
+      .fill("苏州演示运动中心（虚构）");
+    await dialog
+      .getByLabel("场地与额外费用说明")
+      .fill("仅包含陪练费，场地费另付，提前确认。");
+    await dialog.getByLabel("技能 / 段位").fill("基础体能搭伴");
+    await dialog
+      .getByLabel("服务说明")
+      .fill("轻量运动搭伴，提前沟通训练节奏与场地安排。");
+    await dialog.getByRole("button", { name: "保存服务" }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(
+      provider.locator(".service-row").filter({ hasText: "苏州周末运动搭伴" }),
+    ).toContainText("待审核");
+    await login(admin, "admin@demo.moli.test");
+    await admin.goto("/admin");
+    await admin
+      .getByRole("button", { name: "线下服务审核", exact: true })
+      .click();
+    const service = admin
+      .locator("article")
+      .filter({ hasText: "苏州周末运动搭伴" });
+    await service
+      .getByRole("button", { name: "通过服务", exact: true })
+      .click();
+    await admin.getByLabel("已核对服务内容、公开场所、费用和所需资质").check();
+    await admin
+      .locator("dialog[open]")
+      .getByRole("button", { name: "确认处理" })
+      .click();
+    await expect(service).toContainText("已上架");
+    await login(page, "customer@demo.moli.test");
+    await page.goto(
+      "/players?category=fitness&city=" + encodeURIComponent("苏州"),
+    );
+    await expect(page.locator(".provider-card")).toHaveCount(1);
+    await page.getByRole("link", { name: "查看南星的主页" }).click();
+    await expect(page.locator(".booking-panel")).toContainText(
+      "苏州演示运动中心",
+    );
+    const tomorrow = new Date(Date.now() + 86400000);
+    await page.getByLabel("日期", { exact: true }).fill(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(tomorrow),
+    );
+    await page
+      .getByRole("combobox", { name: "开始时间", exact: true })
+      .selectOption("18:00");
+    await page.getByLabel("游戏ID / 联系方式").fill("demo contact");
+    await page.getByRole("button", { name: "确认预约", exact: true }).click();
+    await expect(page).toHaveURL(/\/orders\//);
+    await expect(
+      page.getByText("预约场所：苏州演示运动中心（虚构）"),
+    ).toBeVisible();
+    await expect(
+      page.getByText("费用说明：仅包含陪练费，场地费另付，提前确认。"),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/experiences");
+    await expect(page.locator(".experience-card")).toHaveCount(6);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: "work/cloud/experiences-mobile.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({
+      path: "work/cloud/experiences-desktop.png",
+      fullPage: true,
+    });
+    await page.goto("/experiences/unknown");
+    await expect(
+      page.getByRole("heading", { name: "没有找到这个服务场景" }),
+    ).toBeVisible();
+  } finally {
+    await Promise.all(contexts.map((c) => c.close()));
+  }
+});

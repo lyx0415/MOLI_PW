@@ -14,6 +14,9 @@ import { site } from "../lib/site.js";
 const route = useRoute(),
   router = useRouter(),
   game = ref(String(route.query.game || "")),
+  category = ref(String(route.query.category || "")),
+  mode = ref(String(route.query.mode || "")),
+  city = ref(String(route.query.city || "")),
   keyword = ref(String(route.query.keyword || "")),
   sort = ref("popular"),
   available = ref(false),
@@ -35,6 +38,9 @@ async function load(page = 1) {
         new URLSearchParams({
           page,
           game: game.value,
+          category: category.value,
+          mode: mode.value,
+          city: city.value.trim(),
           keyword: keyword.value,
           sort: sort.value,
           favorites: String(onlySaved.value),
@@ -50,7 +56,17 @@ async function load(page = 1) {
     if (n === request) loading.value = false;
   }
 }
-watch([game, sort, available, maxPrice, onlySaved], () => load());
+watch([game, category, mode, city, sort, available, maxPrice, onlySaved], () =>
+  load(),
+);
+watch(
+  () => [route.query.category, route.query.mode, route.query.city],
+  ([c, m, t]) => {
+    category.value = String(c || "");
+    mode.value = String(m || "");
+    city.value = String(t || "");
+  },
+);
 watch(keyword, () => {
   clearTimeout(timer);
   timer = setTimeout(() => load(), 300);
@@ -86,8 +102,8 @@ async function favorite(p) {
     <div class="page-heading">
       <div>
         <span class="eyebrow">FIND YOUR PEOPLE</span>
-        <h1>找个合拍的游戏搭子。</h1>
-        <p>技术、风格、节奏，总有与你同频的人。</p>
+        <h1>找个合拍的搭子。</h1>
+        <p>线上开黑，线下相聚。按场景、城市与节奏找到同频的人。</p>
       </div>
       <span class="heading-note"
         ><Gamepad2 :size="22" />PLAY WELL. FEEL GOOD.</span
@@ -101,7 +117,53 @@ async function favorite(p) {
           aria-label="搜索陪玩"
         /><SlidersHorizontal :size="18" />
       </div>
-      <div class="filter-tabs game-filters">
+      <div class="experience-filter-row">
+        <label class="field"
+          >服务方式<select
+            v-model="mode"
+            @change="
+              category = '';
+              game = '';
+              city = '';
+            "
+          >
+            <option value="">线上与线下</option>
+            <option value="online">线上服务</option>
+            <option value="offline">线下服务</option>
+          </select></label
+        >
+        <label class="field"
+          >服务场景<select
+            v-model="category"
+            @change="
+              game = '';
+              if (category === 'esports') city = '';
+            "
+          >
+            <option value="">全部场景</option>
+            <option
+              v-for="c in site.categories.filter(
+                (c) => !mode || c.mode === mode,
+              )"
+              :key="c.id"
+              :value="c.id"
+            >
+              {{ c.name }}
+            </option>
+          </select></label
+        >
+        <label class="field"
+          >服务城市<input
+            v-model.lazy="city"
+            :disabled="mode === 'online' || category === 'esports'"
+            maxlength="50"
+            placeholder="线下城市，例如：上海"
+        /></label>
+      </div>
+      <div
+        v-if="mode !== 'offline' && (!category || category === 'esports')"
+        class="filter-tabs game-filters"
+      >
         <button :class="{ active: !game }" @click="game = ''">全部游戏</button
         ><button
           v-for="g in site.games"
@@ -156,11 +218,14 @@ async function favorite(p) {
     >
       <Gamepad2 :size="38" />
       <h3>暂时没有符合条件的搭子</h3>
-      <p>试试其他游戏，或调整搜索和预算。</p>
+      <p>试试其他场景或城市，或调整搜索和预算。</p>
       <button
         class="button secondary"
         @click="
           game = '';
+          category = '';
+          mode = '';
+          city = '';
           keyword = '';
           maxPrice = '';
           available = false;

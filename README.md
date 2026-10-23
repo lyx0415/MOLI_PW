@@ -19,12 +19,12 @@
 
 ## 功能概览
 
-| 角色 | 已实现的功能 |
-| --- | --- |
-| 客户 | 邮箱注册与验证、登录与找回密码；游戏/价格/关键词筛选；收藏；查看服务与档期；预约付款；订单沟通；确认完成与评价；退款申请；客服工单 |
-| 陪玩 | 入驻申请与审核结果；服务介绍与定价；每周档期；暂停接单；接单、拒单、开始与结束服务；订单沟通；收入明细与结算申请 |
-| 客服 | 独立客服工作台；工单回复与沟通历史；解决与追问重开；多人处理冲突保护 |
-| 管理者 | 客服授权与撤权；成年身份与技能审核记录；账号与主页管理；订单查看与原路退款；客服工单；结算凭证登记；公告、评价和操作日志 |
+| 角色   | 已实现的功能                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 客户   | 邮箱注册与验证、登录与找回密码；游戏/价格/关键词筛选；收藏；查看服务与档期；预约付款；订单沟通；确认完成与评价；退款申请；客服工单 |
+| 陪玩   | 入驻申请与审核结果；服务介绍与定价；每周档期；暂停接单；接单、拒单、开始与结束服务；订单沟通；收入明细与结算申请                   |
+| 客服   | 独立客服工作台；工单回复与沟通历史；解决与追问重开；多人处理冲突保护                                                               |
+| 管理者 | 客服授权与撤权；成年身份与技能审核记录；账号与主页管理；订单查看与原路退款；客服工单；结算凭证登记；公告、评价和操作日志           |
 
 ### 服务流程
 
@@ -46,14 +46,14 @@ flowchart LR
 
 ## 技术栈
 
-| 层级 | 技术 |
-| --- | --- |
-| 前端 | Vue 3、Vue Router、Vite、Lucide、响应式 CSS |
-| 后端 | Node.js 24、Express、Zod |
-| 数据库 | 开发使用持久化 SQLite；生产使用 MySQL 8 |
-| 支付 | 微信 API v3 Native/H5、支付宝官方 Node.js SDK |
-| 测试 | Node.js Test Runner、Supertest、Playwright |
-| 部署 | Docker Compose、Caddy HTTPS、GitHub Actions |
+| 层级   | 技术                                          |
+| ------ | --------------------------------------------- |
+| 前端   | Vue 3、Vue Router、Vite、Lucide、响应式 CSS   |
+| 后端   | Node.js 24、Express、Zod                      |
+| 数据库 | 开发使用持久化 SQLite；生产使用 MySQL 8       |
+| 支付   | 微信 API v3 Native/H5、支付宝官方 Node.js SDK |
+| 测试   | Node.js Test Runner、Supertest、Playwright    |
+| 部署   | Docker Compose、Caddy HTTPS、GitHub Actions   |
 
 安全实现包括 scrypt 密码哈希、HttpOnly 会话、角色与订单归属检查、CSRF/来源校验、限流、服务器计价、支付通知验签与幂等记账。
 
@@ -97,12 +97,12 @@ npm run dev
 npm run demo:seed
 ```
 
-| 角色 | 邮箱 | 入口 |
-| --- | --- | --- |
-| 客户 | `customer@demo.moli.test` | `/account`、`/orders` |
-| 陪玩 | `provider1@demo.moli.test` 至 `provider6@demo.moli.test` | `/studio` |
-| 管理者 | `admin@demo.moli.test` | `/admin` |
-| 客服 | `support@demo.moli.test` | `/support` |
+| 角色   | 邮箱                                                     | 入口                  |
+| ------ | -------------------------------------------------------- | --------------------- |
+| 客户   | `customer@demo.moli.test`                                | `/account`、`/orders` |
+| 陪玩   | `provider1@demo.moli.test` 至 `provider6@demo.moli.test` | `/studio`             |
+| 管理者 | `admin@demo.moli.test`                                   | `/admin`              |
+| 客服   | `support@demo.moli.test`                                 | `/support`            |
 
 演示账号使用你设置的 `DEMO_PASSWORD`。演示播种只允许开发环境，生产应使用全新数据库。插画和资料为示例，不代表真实陪玩照片。
 
@@ -122,16 +122,16 @@ npm run demo:seed
 
 ## 常用命令
 
-| 命令 | 用途 |
-| --- | --- |
-| `npm run dev` | 同时启动前后端开发服务 |
-| `npm run build` | 前端生产构建 |
-| `npm start` | 启动后端并提供已构建的前端页面 |
-| `npm run db:migrate` | 版本化数据库迁移 |
-| `npm run demo:seed` | 初始化开发演示资料 |
-| `npm run admin:create` | 创建真实管理员 |
-| `npm test` | 后端业务、账号与支付测试 |
-| `npm run test:e2e` | 浏览器业务流程 |
+| 命令                   | 用途                           |
+| ---------------------- | ------------------------------ |
+| `npm run dev`          | 同时启动前后端开发服务         |
+| `npm run build`        | 前端生产构建                   |
+| `npm start`            | 启动后端并提供已构建的前端页面 |
+| `npm run db:migrate`   | 版本化数据库迁移               |
+| `npm run demo:seed`    | 初始化开发演示资料             |
+| `npm run admin:create` | 创建真实管理员                 |
+| `npm test`             | 后端业务、账号与支付测试       |
+| `npm run test:e2e`     | 浏览器业务流程                 |
 
 使用 `npm start` 提供页面时，需将 `PUBLIC_ORIGIN` 设为实际访问地址。生产反向代理配置见部署文档。
 
@@ -176,19 +176,19 @@ docs/                    架构、支付、部署、迁移与验收
 
 生产需要 MySQL、HTTPS、SMTP、真实运营信息与商户配置。提供的 Docker Compose 使用 Node.js、MySQL 和 Caddy，按单 API 实例部署。
 
-| 文档 | 内容 |
-| --- | --- |
-| [部署说明](docs/DEPLOYMENT.md) | Docker、域名/HTTPS、邮件、管理员、备份与运维 |
-| [支付配置](docs/PAYMENTS.md) | 微信/支付宝参数、签名、回调、查单与退款 |
-| [架构说明](docs/ARCHITECTURE.md) | 授权、订单状态、金额、并发与功能边界 |
-| [旧数据迁移](docs/MIGRATION.md) | 数据保留、账号核验、切换与回退 |
-| [发布审查](docs/RELEASE_REVIEW.md) | 四角色能力、已修问题、稳定性证据和上线条件 |
-| [验收记录](docs/ACCEPTANCE.md) | 验证结果及上线所需外部条件 |
-| [更新说明](CHANGELOG.md) | 本次重构内容 |
-| [提交说明](docs/COMMIT_MESSAGE.md) | 重构目标、主要变更与验证结果 |
+| 文档                               | 内容                                         |
+| ---------------------------------- | -------------------------------------------- |
+| [部署说明](docs/DEPLOYMENT.md)     | Docker、域名/HTTPS、邮件、管理员、备份与运维 |
+| [支付配置](docs/PAYMENTS.md)       | 微信/支付宝参数、签名、回调、查单与退款      |
+| [架构说明](docs/ARCHITECTURE.md)   | 授权、订单状态、金额、并发与功能边界         |
+| [旧数据迁移](docs/MIGRATION.md)    | 数据保留、账号核验、切换与回退               |
+| [发布审查](docs/RELEASE_REVIEW.md) | 四角色能力、已修问题、稳定性证据和上线条件   |
+| [验收记录](docs/ACCEPTANCE.md)     | 验证结果及上线所需外部条件                   |
+| [更新说明](CHANGELOG.md)           | 本次重构内容                                 |
+| [提交说明](docs/COMMIT_MESSAGE.md) | 重构目标、主要变更与验证结果                 |
 
 新表使用 `moli_` 前缀，原 `applications`、`players` 表保留。旧陪玩需要注册并核验后绑定新平台，不自动分发默认登录密码。
 
-首版聚焦线上电竞陪练。结算由运营者人工转账；尚未实现自动分账、音视频通话、文件上传或微信内 JSAPI。Docker 与真实商户公网联调需要在目标环境完成。
+现已扩展线上电竞及线下电竞、健身陪练、KTV、桌游、棋牌场景；详见 [多场景运营说明](docs/EXPERIENCES.md)。线下项目需经人工审核再开放预约。结算由运营者人工转账；尚未实现自动分账、音视频通话、文件上传或微信内 JSAPI。Docker 与真实商户公网联调需要在目标环境完成。
 
 `.env`、演示数据库、运行日志及商户密钥不在仓库中。历史公开过的旧密码需在原环境更换。

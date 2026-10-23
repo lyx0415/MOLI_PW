@@ -2,6 +2,7 @@ import { reactive } from "vue";
 import { api } from "./api.js";
 export const site = reactive({
   games: [],
+  categories: [],
   counts: { providers: 0, completed: 0 },
   announcements: [],
   demo: false,
