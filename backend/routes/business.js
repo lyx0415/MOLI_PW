@@ -8,6 +8,7 @@ import {
   scheduleSchema,
   pagination,
   text,
+  bookingRules,
 } from "../lib/validation.js";
 import { detailColumns } from "../lib/experiences.js";
 import { saveService } from "../lib/service-publishing.js";
@@ -124,9 +125,9 @@ export function businessRoutes({ db, config, requireAuth, requireRole }) {
         durationMinutes: z
           .number()
           .int()
-          .min(30)
-          .max(240)
-          .refine((n) => n % 30 === 0),
+          .min(bookingRules.minMinutes)
+          .max(bookingRules.maxMinutes)
+          .refine((n) => n % bookingRules.stepMinutes === 0),
         contact: text(120),
         note: text(500, 0).default(""),
       })

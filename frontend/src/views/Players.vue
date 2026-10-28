@@ -7,11 +7,20 @@ import {
   ArrowUpRight,
   Gamepad2,
   X,
+  Heart,
+  ArrowRight,
+  ShieldCheck,
+  Clock,
+  Crown,
+  Swords,
+  Crosshair,
+  Target,
+  Compass,
 } from "lucide-vue-next";
 import ProviderCard from "../components/ProviderCard.vue";
 import Pagination from "../components/Pagination.vue";
 import { api, auth, notify } from "../lib/api.js";
-import { site } from "../lib/site.js";
+import { site, loadSite } from "../lib/site.js";
 const route = useRoute(),
   router = useRouter(),
   keyword = ref(String(route.query.keyword || "")),
@@ -44,7 +53,7 @@ const game = textFilter("game"),
   category = textFilter("category"),
   mode = textFilter("mode"),
   city = textFilter("city"),
-  sort = textFilter("sort", "popular"),
+  sort = textFilter("sort", "recommended"),
   maxPrice = textFilter("maxPrice"),
   available = computed({
     get: () => route.query.available === "true",
@@ -54,6 +63,10 @@ const game = textFilter("game"),
     get: () => Boolean(auth.user) && route.query.favorites === "true",
     set: (value) => setFilters({ favorites: value ? "true" : undefined }),
   });
+const gameIcons = [Crown, Swords, Crosshair, Target, Compass, Gamepad2];
+function gameCount(name) {
+  return site.gameCatalog.find((g) => g.name === name)?.providerCount ?? 0;
+}
 const activeFilters = computed(() =>
   [
     game.value && ["game", game.value],
@@ -126,6 +139,7 @@ onUnmounted(() => {
   request++;
 });
 onMounted(async () => {
+  if (site.loaded) loadSite();
   if (auth.user)
     try {
       favorites.value = await api("/favorites");
@@ -148,62 +162,58 @@ async function favorite(p) {
 }
 </script>
 <template>
-  <div class="container page-space">
-    <div class="page-heading">
+  <div class="container page-space marketplace">
+    <section class="market-heading">
       <div>
-        <span class="eyebrow">FIND YOUR PEOPLE</span>
-        <h1>找个合拍的搭子。</h1>
-        <p>线上开黑，线下相聚。按场景、城市与节奏找到同频的人。</p>
+        <span class="eyebrow"><i />MOLI · FIND YOUR TEAMMATE</span>
+        <h1>发现陪玩，<span>让快乐同频。</span></h1>
+        <p>选你喜欢的游戏，找一位合拍的搭子。服务、价格与档期，看清再预约。</p>
+        <div class="market-assurance">
+          <span><ShieldCheck :size="14" />入驻审核</span
+          ><span><Clock :size="14" />{{ site.booking.minMinutes }}分钟起约</span
+          ><span>订单内沟通</span>
+        </div>
       </div>
-      <span class="heading-note"
-        ><Gamepad2 :size="22" />PLAY WELL. FEEL GOOD.</span
-      >
-    </div>
+      <aside class="market-journey" aria-label="客户预约流程">
+        <span class="eyebrow">YOUR NEXT GOOD GAME</span>
+        <ol>
+          <li>
+            <b>01</b><span>选陪玩<small>看擅长与价格</small></span>
+          </li>
+          <li>
+            <b>02</b><span>约时间<small>选服务与档期</small></span>
+          </li>
+          <li>
+            <b>03</b><span>确认订单<small>付款后等待接单</small></span>
+          </li>
+        </ol>
+        <router-link to="/orders"
+          >查看我的订单<ArrowRight :size="15"
+        /></router-link>
+      </aside>
+    </section>
     <section class="catalog-filter panel" aria-label="筛选陪玩">
-      <div class="filter-heading">
-        <span><SlidersHorizontal :size="16" />找到你的同频</span
-        ><small>按场景、预算与偏好筛选</small>
-      </div>
-      <div class="catalog-search">
-        <Search :size="19" /><input
-          v-model="keyword"
-          placeholder="搜索昵称、风格或介绍"
-          aria-label="搜索陪玩"
-        /><SlidersHorizontal :size="18" />
-      </div>
-      <div class="experience-filter-row">
-        <label class="field"
-          >服务方式<select :value="mode" @change="changeMode">
-            <option value="">线上与线下</option>
-            <option value="online">线上服务</option>
-            <option value="offline">线下服务</option>
-          </select></label
+      <div class="market-search-row">
+        <form
+          class="catalog-search"
+          @submit.prevent="setFilters({ keyword: keyword.trim() })"
         >
-        <label class="field"
-          >服务场景<select :value="category" @change="changeCategory">
-            <option value="">全部场景</option>
-            <option
-              v-for="c in site.categories.filter(
-                (c) => !mode || c.mode === mode,
-              )"
-              :key="c.id"
-              :value="c.id"
-            >
-              {{ c.name }}
-            </option>
-          </select></label
+          <Search :size="19" /><input
+            v-model="keyword"
+            placeholder="搜索游戏、昵称或你喜欢的风格"
+            aria-label="搜索陪玩"
+          /><button type="submit" class="button">
+            找陪玩<ArrowRight :size="15" />
+          </button>
+        </form>
+        <router-link to="/players?favorites=true" class="market-saved"
+          ><Heart :size="17" />我的收藏</router-link
         >
-        <label class="field"
-          >服务城市<input
-            v-model.lazy="city"
-            :disabled="mode === 'online' || category === 'esports'"
-            maxlength="50"
-            placeholder="线下城市，例如：上海"
-        /></label>
       </div>
+
       <div
         v-if="mode !== 'offline' && (!category || category === 'esports')"
-        class="filter-tabs game-filters"
+        class="market-game-picker"
         aria-label="游戏筛选"
       >
         <button
@@ -211,17 +221,62 @@ async function favorite(p) {
           :aria-pressed="!game"
           @click="game = ''"
         >
-          全部游戏</button
+          <Gamepad2 :size="22" /><span
+            >全部游戏<small>按你的喜好出发</small></span
+          ></button
         ><button
-          v-for="g in site.games"
+          v-for="(g, index) in site.games"
           :key="g"
           :class="{ active: game === g }"
           :aria-pressed="game === g"
+          :aria-label="g"
           @click="game = g"
         >
-          {{ g }}
+          <component :is="gameIcons[index] || Gamepad2" :size="22" /><span
+            >{{ g }}<small>{{ gameCount(g) }} 位伙伴</small></span
+          >
         </button>
       </div>
+      <details
+        class="advanced-filters"
+        :open="Boolean(mode || category || city)"
+      >
+        <summary>
+          <SlidersHorizontal :size="15" />更多筛选<span
+            >方式 / 场景 / 城市</span
+          >
+        </summary>
+        <div class="experience-filter-row">
+          <label class="field"
+            >服务方式<select :value="mode" @change="changeMode">
+              <option value="">线上与线下</option>
+              <option value="online">线上服务</option>
+              <option value="offline">线下服务</option>
+            </select></label
+          >
+          <label class="field"
+            >服务场景<select :value="category" @change="changeCategory">
+              <option value="">全部场景</option>
+              <option
+                v-for="c in site.categories.filter(
+                  (c) => !mode || c.mode === mode,
+                )"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.name }}
+              </option>
+            </select></label
+          >
+          <label class="field"
+            >服务城市<input
+              v-model.lazy="city"
+              :disabled="mode === 'online' || category === 'esports'"
+              maxlength="50"
+              placeholder="线下城市，例如：上海"
+          /></label>
+        </div>
+      </details>
       <div class="filter-row">
         <div class="filter-options">
           <label><input type="checkbox" v-model="available" />只看可预约</label
@@ -238,6 +293,7 @@ async function favorite(p) {
         </div>
         <label class="sort-label"
           >排序<select v-model="sort">
+            <option value="recommended">综合推荐</option>
             <option value="popular">完成订单最多</option>
             <option value="rating">评价优先</option>
             <option value="price">价格从低到高</option>
@@ -246,6 +302,11 @@ async function favorite(p) {
         >
       </div>
     </section>
+    <p v-if="site.loaded && !site.booking.enabled" class="market-notice">
+      <ShieldCheck
+        :size="15"
+      />在线预约尚未开放，你可以先浏览服务与档期；支付开放后再确认下单。
+    </p>
     <div
       v-if="activeFilters.length"
       class="active-filters"
@@ -266,8 +327,9 @@ async function favorite(p) {
       <template v-if="loading">正在寻找合拍的搭子…</template>
       <template v-else-if="failed">加载暂时遇到问题，请重试</template>
       <template v-else
-        >发现 <strong>{{ data.total }}</strong> 位陪玩</template
-      ><span>评价与订单数据来自已完成的服务</span>
+        >{{ onlySaved ? "我的收藏" : "为你发现" }}
+        <strong>{{ data.total }}</strong> 位陪玩</template
+      ><span>价格公开 · 自选档期 · 真实订单评价</span>
     </div>
     <div v-if="loading" class="provider-grid">
       <div class="skeleton card-skeleton" v-for="i in 6" :key="i" />
@@ -276,22 +338,23 @@ async function favorite(p) {
       <h3>暂时无法加载陪玩</h3>
       <button class="button secondary" @click="load()">重新加载</button>
     </div>
-    <div
-      v-else-if="
-        !data.items.filter((p) => !onlySaved || favorites.includes(p.id)).length
-      "
-      class="empty-state panel"
-    >
+    <div v-else-if="!data.items.length" class="empty-state panel">
       <Gamepad2 :size="38" />
       <h3>暂时没有符合条件的搭子</h3>
-      <p>试试其他场景或城市，或调整搜索和预算。</p>
-      <button class="button secondary" @click="clearFilters">清除筛选</button>
+      <p>
+        {{
+          onlySaved
+            ? "喜欢的陪玩可以先收藏，下次更容易找到。"
+            : "试试其他游戏，或调整场景、搜索和预算。"
+        }}
+      </p>
+      <button class="button secondary" @click="clearFilters">
+        {{ onlySaved ? "去发现陪玩" : "清除筛选" }}
+      </button>
     </div>
     <div v-else class="provider-grid">
       <ProviderCard
-        v-for="p in data.items.filter(
-          (p) => !onlySaved || favorites.includes(p.id),
-        )"
+        v-for="p in data.items"
         :key="p.id"
         :provider="p"
         :saved="favorites.includes(p.id)"
@@ -303,11 +366,24 @@ async function favorite(p) {
       :total="data.total"
       @change="setFilters({ page: $event }, false)"
     />
-    <div class="catalog-join">
-      <p>你也是一位有温度的游戏高手？</p>
-      <router-link to="/apply" class="text-link"
-        >加入茉莉，成为陪玩<ArrowUpRight :size="17"
+    <section class="customer-help-strip">
+      <div>
+        <ShieldCheck :size="22" /><span
+          ><strong>从选择到完成，每一步都有约定。</strong
+          ><small
+            >先确认服务内容和费用，服务结束后再评价；需要帮助，可关联订单联系客服。</small
+          ></span
+        >
+      </div>
+      <router-link to="/help" class="text-link"
+        >预约与售后说明<ArrowUpRight :size="16"
       /></router-link>
-    </div>
+    </section>
+    <aside class="partner-secondary">
+      <span>想把擅长变成陪伴？</span
+      ><router-link to="/apply"
+        >了解陪玩申请<ArrowUpRight :size="14"
+      /></router-link>
+    </aside>
   </div>
 </template>

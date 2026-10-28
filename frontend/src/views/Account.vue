@@ -1,13 +1,7 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  UserRound,
-  ArrowUpRight,
-  ShieldCheck,
-  Heart,
-  Gamepad2,
-} from "lucide-vue-next";
+import { UserRound, ArrowUpRight, Heart, Gamepad2 } from "lucide-vue-next";
 import { api, auth, notify } from "../lib/api.js";
 const router = useRouter(),
   name = ref(auth.user.name),
@@ -56,27 +50,8 @@ async function changePassword() {
       <router-link to="/orders" class="panel"
         ><Gamepad2 /><strong>我的订单</strong
         ><ArrowUpRight :size="19" /></router-link
-      ><router-link
-        :to="
-          auth.user.role === 'provider'
-            ? '/studio'
-            : auth.user.role === 'admin'
-              ? '/admin'
-              : auth.user.role === 'support'
-                ? '/support'
-                : '/apply'
-        "
-        class="panel"
-        ><ShieldCheck /><strong>{{
-          auth.user.role === "provider"
-            ? "陪玩工作台"
-            : auth.user.role === "admin"
-              ? "运营管理"
-              : auth.user.role === "support"
-                ? "客服工作台"
-                : "申请成为陪玩"
-        }}</strong
-        ><ArrowUpRight :size="19"
+      ><router-link to="/players?favorites=true" class="panel"
+        ><Heart /><strong>我的收藏</strong><ArrowUpRight :size="19"
       /></router-link>
     </div>
     <section class="panel section-panel">
@@ -96,6 +71,12 @@ async function changePassword() {
         ><button class="button" :disabled="busy">保存资料</button>
       </form>
     </section>
+    <aside v-if="auth.user.role === 'customer'" class="partner-secondary">
+      <span>也想分享你的擅长？</span
+      ><router-link to="/apply"
+        >了解陪玩申请<ArrowUpRight :size="14"
+      /></router-link>
+    </aside>
     <section class="panel section-panel">
       <h2>修改密码</h2>
       <form @submit.prevent="changePassword">

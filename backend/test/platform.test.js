@@ -82,6 +82,80 @@ test("simultaneous password changes cannot overwrite a password reset with stale
 
 const pass = "TestPassword48291",
   origin = "http://localhost:5173";
+
+test("customer storefront counts only published providers and exposes current booking rules", async (t) => {
+  const ctx = await fixture(t);
+  let response = await request(ctx.app).get("/api/site");
+  assert.equal(response.status, 200);
+  assert.equal(Number(response.body.data.counts.providers), 6);
+  assert.deepEqual(
+    response.body.data.gameCatalog.find((g) => g.name === "英雄联盟"),
+    { name: "英雄联盟", providerCount: 2, minRateCents: 4200 },
+  );
+  assert.deepEqual(response.body.data.booking, {
+    enabled: true,
+    timeZone: "Asia/Shanghai",
+    minMinutes: 30,
+    maxMinutes: 240,
+    stepMinutes: 30,
+  });
+  await ctx.db.run(
+    "UPDATE moli_services SET active=0 WHERE provider_id IN (SELECT id FROM moli_providers WHERE nickname='南星')",
+  );
+  await ctx.db.run(
+    "UPDATE moli_users SET state='disabled' WHERE email='provider4@demo.moli.test'",
+  );
+  response = await request(ctx.app).get("/api/site");
+  assert.equal(Number(response.body.data.counts.providers), 4);
+  assert.deepEqual(
+    response.body.data.gameCatalog.find((g) => g.name === "英雄联盟"),
+    { name: "英雄联盟", providerCount: 1, minRateCents: 5800 },
+  );
+  assert.deepEqual(
+    response.body.data.gameCatalog.find((g) => g.name === "和平精英"),
+    { name: "和平精英", providerCount: 0, minRateCents: null },
+  );
+  const noPayments = createApp({
+    db: ctx.db,
+    config: ctx.config,
+    gateways: {},
+  });
+  assert.equal(
+    (await request(noPayments).get("/api/site")).body.data.booking.enabled,
+    false,
+  );
+});
+
+test("customer keyword search matches game and service while keeping the displayed price bound to that service", async (t) => {
+  const ctx = await fixture(t);
+  let response = await request(ctx.app)
+    .get("/api/providers")
+    .query({ keyword: "英雄联盟" });
+  assert.equal(response.body.data.total, 2);
+  response = await request(ctx.app)
+    .get("/api/providers")
+    .query({ keyword: "线下电竞" });
+  assert.equal(response.body.data.total, 1);
+  assert.equal(response.body.data.items[0].min_rate_cents, 12000);
+  assert.ok(
+    response.body.data.items[0].services.every(
+      (s) => s.category === "offline-gaming",
+    ),
+  );
+  assert.ok(response.body.data.items[0].services[0].description);
+  response = await request(ctx.app)
+    .get("/api/providers")
+    .query({ keyword: "线下电竞", maxPrice: 6000 });
+  assert.equal(response.body.data.total, 0);
+  await ctx.db.run(
+    "UPDATE moli_service_details SET review_status='pending' WHERE category='offline-gaming'",
+  );
+  response = await request(ctx.app)
+    .get("/api/providers")
+    .query({ keyword: "线下电竞" });
+  assert.equal(response.body.data.total, 0);
+});
+
 async function fixture(t) {
   const config = {
     ...loadConfig({ PUBLIC_ORIGIN: origin }),

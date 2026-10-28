@@ -83,7 +83,7 @@ test("scene navigation retains its parent and mobile menus close predictably", a
     .getByRole("navigation", { name: "主导航", exact: true })
     .getByRole("link", { name: "发现陪玩", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/players$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
 });
 
@@ -138,7 +138,14 @@ test("personal navigation separates role workspaces from public navigation", asy
   await expect(
     personal.getByRole("link", { name: "管理后台", exact: true }),
   ).toHaveCount(0);
-  await personal.getByRole("link", { name: "客服工作台", exact: true }).click();
+  await expect(
+    personal.getByRole("link", { name: "客服工作台", exact: true }),
+  ).toHaveCount(0);
+  await page.locator(".account-menu summary").click();
+  await page
+    .getByRole("navigation", { name: "员工导航" })
+    .getByRole("link", { name: "客服工作台", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/support$/);
   await expect(personal.locator("a[aria-current=page]")).toHaveText(
     "客服工作台",

@@ -5,7 +5,7 @@ import {
   publicDetailColumns,
   published,
 } from "../lib/experiences.js";
-import { games, pagination } from "../lib/validation.js";
+import { games, pagination, bookingRules } from "../lib/validation.js";
 
 const providerSelect = `SELECT p.id,p.nickname,p.bio,p.city,p.theme,p.tags_json,p.accepting,
  (SELECT MIN(s.rate_cents) FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE s.provider_id=p.id AND ${published}) AS min_rate_cents,
@@ -23,11 +23,11 @@ const shape = (p) => ({
   review_count: Number(p.review_count),
   completed_count: Number(p.completed_count),
 });
-export function catalogRoutes({ db, config }) {
+export function catalogRoutes({ db, config, gateways }) {
   const router = Router();
   router.get("/site", async (req, res) => {
     const counts = await db.one(
-      `SELECT (SELECT COUNT(*) FROM moli_providers p JOIN moli_users u ON p.user_id=u.id WHERE p.status='active' AND u.state='active') AS providers,(SELECT COUNT(*) FROM moli_orders WHERE status='completed') AS completed`,
+      `SELECT (SELECT COUNT(*) FROM moli_providers p JOIN moli_users u ON p.user_id=u.id WHERE p.status='active' AND u.state='active' AND EXISTS (SELECT 1 FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE s.provider_id=p.id AND ${published})) AS providers,(SELECT COUNT(*) FROM moli_orders WHERE status='completed') AS completed`,
     );
     const announcements = await db.all(
       "SELECT id,title,content,created_at FROM moli_announcements WHERE active=1 ORDER BY created_at DESC LIMIT 5",
@@ -35,9 +35,24 @@ export function catalogRoutes({ db, config }) {
     const offerings = await db.all(
       `SELECT COALESCE(d.category,'esports') AS category,COALESCE(d.city,'') AS city,COUNT(*) AS n FROM moli_services s JOIN moli_providers p ON p.id=s.provider_id JOIN moli_users u ON u.id=p.user_id LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE ${published} AND p.status='active' AND u.state='active' GROUP BY COALESCE(d.category,'esports'),COALESCE(d.city,'')`,
     );
+    const gameOfferings = await db.all(
+      `SELECT s.game,COUNT(DISTINCT p.id) AS provider_count,MIN(s.rate_cents) AS min_rate_cents FROM moli_services s JOIN moli_providers p ON p.id=s.provider_id JOIN moli_users u ON u.id=p.user_id LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE ${published} AND p.status='active' AND u.state='active' AND COALESCE(d.category,'esports')='esports' GROUP BY s.game`,
+    );
     ok(res, {
       brand: "茉莉陪玩",
       games,
+      gameCatalog: games.map((name) => {
+        const offering = gameOfferings.find((o) => o.game === name);
+        return {
+          name,
+          providerCount: Number(offering?.provider_count || 0),
+          minRateCents: offering ? Number(offering.min_rate_cents) : null,
+        };
+      }),
+      booking: {
+        ...bookingRules,
+        enabled: Object.keys(gateways || {}).length > 0,
+      },
       categories: categories.map((c) => ({
         ...c,
         serviceCount: offerings
@@ -92,16 +107,16 @@ export function catalogRoutes({ db, config }) {
         Math.max(0, Math.min(200000, Number(req.query.maxPrice) || 200000)),
       );
     }
+    if (req.query.keyword) {
+      const pattern = `%${String(req.query.keyword).trim().slice(0, 100)}%`;
+      conditions.push(
+        "(s.game LIKE ? OR s.title LIKE ? OR s.skill LIKE ? OR s.provider_id IN (SELECT id FROM moli_providers WHERE nickname LIKE ? OR bio LIKE ?))",
+      );
+      serviceParams.push(pattern, pattern, pattern, pattern, pattern);
+    }
     const serviceWhere = conditions.join(" AND ");
     let where = ` WHERE p.status='active' AND u.state='active' AND EXISTS (SELECT 1 FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE s.provider_id=p.id AND ${serviceWhere})`;
     params.push(...serviceParams);
-    if (req.query.keyword) {
-      where += " AND (p.nickname LIKE ? OR p.bio LIKE ?)";
-      params.push(
-        `%${String(req.query.keyword).slice(0, 100)}%`,
-        `%${String(req.query.keyword).slice(0, 100)}%`,
-      );
-    }
     if (req.query.available === "true") where += " AND p.accepting=1";
     if (req.query.favorites === "true") {
       assert(req.user, 401, "请先登录");
@@ -115,6 +130,7 @@ export function catalogRoutes({ db, config }) {
       params,
     );
     const sorts = {
+      recommended: "p.accepting DESC,completed_count DESC,review_count DESC",
       price: "min_rate_cents ASC",
       rating: "rating DESC,review_count DESC",
       popular: "completed_count DESC",
@@ -124,13 +140,13 @@ export function catalogRoutes({ db, config }) {
       providerSelect.replace(published, serviceWhere) +
         where +
         " ORDER BY " +
-        (sorts[req.query.sort] || sorts.popular) +
+        (sorts[req.query.sort] || sorts.recommended) +
         ` ,p.id LIMIT ${size} OFFSET ${(page - 1) * size}`,
       [...serviceParams, ...params],
     );
     const services = items.length
       ? await db.all(
-          `SELECT s.id,s.provider_id,s.game,s.title,s.skill,s.rate_cents,${publicDetailColumns} FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE ${serviceWhere} AND s.provider_id IN (${items.map(() => "?").join(",")}) ORDER BY s.rate_cents,s.id`,
+          `SELECT s.id,s.provider_id,s.game,s.title,s.skill,s.description,s.rate_cents,${publicDetailColumns} FROM moli_services s LEFT JOIN moli_service_details d ON d.service_id=s.id WHERE ${serviceWhere} AND s.provider_id IN (${items.map(() => "?").join(",")}) ORDER BY s.rate_cents,s.id`,
           [...serviceParams, ...items.map((p) => p.id)],
         )
       : [];

@@ -31,12 +31,12 @@ const router = useRouter(),
     terms: false,
   });
 onMounted(async () => {
-  if (auth.user.role === "provider") {
-    router.replace("/studio");
+  if (!auth.user || ["admin", "support"].includes(auth.user.role)) {
+    loading.value = false;
     return;
   }
-  if (auth.user.role === "admin") {
-    router.replace("/admin");
+  if (auth.user.role === "provider") {
+    router.replace("/studio");
     return;
   }
   try {
@@ -101,6 +101,7 @@ async function refresh() {
 </script>
 <template>
   <div class="container page-space">
+    <router-link class="back-link" to="/">返回发现陪玩</router-link>
     <div class="page-heading">
       <div>
         <span class="eyebrow">YOUR SKILLS, OUR STAGE</span>
@@ -131,7 +132,28 @@ async function refresh() {
         </div>
       </section>
       <section class="panel section-panel">
-        <div v-if="loading" class="skeleton list-skeleton" />
+        <div v-if="!auth.user" class="application-gate">
+          <span class="eyebrow">BECOME A MOLI PARTNER</span>
+          <h2>准备好分享你的擅长了吗？</h2>
+          <p>
+            先了解服务规则，再使用本人账号提交成年身份与技能资料。申请通过后，你可以设置服务、价格和接单档期。
+          </p>
+          <router-link class="button" to="/login?redirect=/apply"
+            >登录后申请<ArrowUpRight :size="17"
+          /></router-link>
+          <router-link class="text-link" to="/">我想先找陪玩</router-link>
+        </div>
+        <div
+          v-else-if="['admin', 'support'].includes(auth.user.role)"
+          class="application-gate"
+        >
+          <h2>当前账号已开通员工权限</h2>
+          <p>陪玩申请仅面向客户账号；现有工作入口可在账号菜单中找到。</p>
+          <router-link class="button secondary" to="/"
+            >返回发现陪玩</router-link
+          >
+        </div>
+        <div v-else-if="loading" class="skeleton list-skeleton" />
         <div v-else-if="application?.status === 'pending'" class="empty-state">
           <Clock :size="38" />
           <h2>申请已送达。</h2>

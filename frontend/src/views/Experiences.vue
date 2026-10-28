@@ -281,7 +281,7 @@ async function favorite(p) {
             }}暂时没有已上架的服务。欢迎成为首批伙伴，或向客服反馈你的需求。
           </p>
           <div class="actions-row">
-            <router-link class="button" to="/apply">申请入驻</router-link
+            <router-link class="button" to="/">继续发现陪玩</router-link
             ><router-link class="button secondary" to="/help"
               >联系茉莉客服</router-link
             >
@@ -305,18 +305,11 @@ async function favorite(p) {
           <p>在订单内沟通，完成后留下评价；需要协助时提交关联订单的工单。</p>
         </div>
       </section>
-      <section class="experience-join">
-        <div>
-          <span class="eyebrow">GROW WITH MOLI</span>
-          <h2>你的擅长，是别人的期待。</h2>
-          <p>
-            欢迎电竞、运动和休闲娱乐服务伙伴入驻。门店与活动合作可通过客服工单提交城市、场地及合作意向。
-          </p>
-        </div>
-        <router-link class="button" to="/apply"
-          >成为服务伙伴<ArrowUpRight :size="18" /></router-link
-        ><router-link class="text-link" to="/help">门店合作咨询</router-link>
-      </section>
+      <aside class="partner-secondary">
+        <span>想分享你的擅长，或开展门店合作？</span
+        ><router-link to="/apply">了解陪玩申请</router-link
+        ><router-link to="/help">合作咨询</router-link>
+      </aside>
     </template>
   </div>
 </template>

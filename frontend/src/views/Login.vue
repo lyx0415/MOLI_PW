@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowUpRight, ShieldCheck, Gamepad2, Sparkles } from "lucide-vue-next";
+import { ArrowUpRight, ShieldCheck, Gamepad2, Heart } from "lucide-vue-next";
 import BrandMark from "../components/BrandMark.vue";
 import { api, auth, notify } from "../lib/api.js";
 import { site } from "../lib/site.js";
@@ -93,11 +93,13 @@ async function submit() {
       <BrandMark /><span class="eyebrow">MOLI · PLAY TOGETHER</span>
       <h1>快乐同频，<br />从这一局开始。</h1>
       <p>
-        登录一个账号，发现你的游戏搭子。<br />也可以成为陪玩，让热爱拥有新的可能。
+        收藏喜欢的陪玩，预约合拍的时光。<br />你的选择、订单与沟通，都在这里。
       </p>
       <div><Gamepad2 :size="22" /><span>客户 · 预约喜欢的服务</span></div>
-      <div><Sparkles :size="22" /><span>陪玩 · 自主安排游戏时光</span></div>
-      <div><ShieldCheck :size="22" /><span>管理者 · 守护每一次体验</span></div>
+      <div><Heart :size="22" /><span>收藏 · 留住喜欢的搭子</span></div>
+      <div>
+        <ShieldCheck :size="22" /><span>订单 · 清楚约定，安心沟通</span>
+      </div>
     </section>
     <section class="auth-form panel">
       <div class="auth-tabs" v-if="mode !== 'reset'">

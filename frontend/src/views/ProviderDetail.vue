@@ -12,6 +12,7 @@ import {
 } from "lucide-vue-next";
 import AvatarArt from "../components/AvatarArt.vue";
 import { api, auth, money, datetime, weekdays, notify } from "../lib/api.js";
+import { site } from "../lib/site.js";
 const route = useRoute(),
   router = useRouter(),
   p = ref(null),
@@ -29,6 +30,28 @@ const selected = ref(""),
 const service = computed(() =>
   p.value?.services.find((s) => s.id === selected.value),
 );
+const backTo = computed(() => {
+  try {
+    const candidate = new URL(
+      String(route.query.from || "/"),
+      window.location.origin,
+    );
+    if (
+      candidate.origin === window.location.origin &&
+      (["/", "/players"].includes(candidate.pathname) ||
+        /^\/experiences(?:\/[^/]+)?$/.test(candidate.pathname))
+    )
+      return candidate.pathname + candidate.search;
+  } catch {}
+  return "/";
+});
+const durations = computed(() => {
+  const { minMinutes, maxMinutes, stepMinutes } = site.booking;
+  return Array.from(
+    { length: Math.floor((maxMinutes - minMinutes) / stepMinutes) + 1 },
+    (_, i) => minMinutes + i * stepMinutes,
+  );
+});
 const minDate = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -119,8 +142,10 @@ async function book() {
 </script>
 <template>
   <div class="container page-space">
-    <router-link to="/players" class="back-link"
-      ><ArrowLeft :size="16" />返回发现陪玩</router-link
+    <router-link :to="backTo" class="back-link"
+      ><ArrowLeft :size="16" />{{
+        backTo.startsWith("/experiences") ? "返回服务场景" : "返回发现陪玩"
+      }}</router-link
     >
     <div v-if="loading" class="skeleton detail-skeleton" />
     <div v-else-if="failed" class="empty-state">
@@ -167,7 +192,7 @@ async function book() {
           <p class="profile-bio">{{ p.bio }}</p>
         </section>
         <section class="panel section-panel">
-          <h2>一起玩什么</h2>
+          <h2>01 · 选择服务</h2>
           <div
             v-for="s in p.services"
             :key="s.id"
@@ -227,7 +252,7 @@ async function book() {
       </div>
       <aside>
         <form class="booking-panel panel" @submit.prevent="book">
-          <span class="eyebrow">BOOK A GOOD TIME</span>
+          <span class="eyebrow">02 / CHOOSE YOUR TIME</span>
           <h2>预约一段好时光</h2>
           <p class="subtle">{{ service?.title || "请选择服务" }}</p>
           <p v-if="service?.category !== 'esports' && service" class="alert">
@@ -241,12 +266,13 @@ async function book() {
           <div class="form-grid">
             <label class="field"
               >服务时长<select v-model="duration">
-                <option :value="30">30分钟</option>
-                <option :value="60">1小时</option>
-                <option :value="90">1.5小时</option>
-                <option :value="120">2小时</option>
-                <option :value="180">3小时</option>
-                <option :value="240">4小时</option>
+                <option
+                  v-for="minutes in durations"
+                  :key="minutes"
+                  :value="minutes"
+                >
+                  {{ minutes < 60 ? minutes + "分钟" : minutes / 60 + "小时" }}
+                </option>
               </select></label
             ><label class="field"
               >开始时间<select

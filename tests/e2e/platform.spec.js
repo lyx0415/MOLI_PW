@@ -53,9 +53,9 @@ test("customer, provider, support and admin collaborate on tickets without lost 
     await support.goto("/admin");
     await expect(support).toHaveURL(/\/account/);
     await support.setViewportSize({ width: 390, height: 844 });
-    await support.getByRole("button", { name: "展开导航" }).click();
+    await support.locator(".account-menu summary").click();
     await support
-      .getByRole("navigation", { name: "主导航" })
+      .getByRole("navigation", { name: "员工导航" })
       .getByRole("link", { name: "客服工作台", exact: true })
       .click();
     await expect(support).toHaveURL(/\/support/);
@@ -183,7 +183,7 @@ test("homepage, discovery search, real empty ratings and responsive navigation",
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /今晚的快乐，\s*有人陪你开局。/ }),
+    page.getByRole("heading", { name: /发现陪玩，\s*让快乐同频。/ }),
   ).toBeVisible();
   await expect(page.locator(".provider-card")).toHaveCount(6);
   await expect(page.locator(".provider-card .rating")).toHaveCount(0);
@@ -360,9 +360,9 @@ test("protected routes redirect, expired sessions return to login, mobile role n
   await page.getByRole("button", { name: "登录，开始新的一局" }).click();
   await expect(page).toHaveURL(/\/account/);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "展开导航" }).click();
+  await page.locator(".account-menu summary").click();
   await page
-    .getByRole("navigation", { name: "主导航" })
+    .getByRole("navigation", { name: "员工导航" })
     .getByRole("link", { name: "陪玩工作台", exact: true })
     .click();
   await expect(page).toHaveURL(/\/studio/);

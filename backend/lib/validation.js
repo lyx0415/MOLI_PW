@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { categories, categoryFor } from "./experiences.js";
+export const bookingRules = Object.freeze({
+  timeZone: "Asia/Shanghai",
+  minMinutes: 30,
+  maxMinutes: 240,
+  stepMinutes: 30,
+});
 export const games = [
   "英雄联盟",
   "王者荣耀",

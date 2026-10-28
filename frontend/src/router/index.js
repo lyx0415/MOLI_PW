@@ -10,18 +10,14 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      component: () => import("../views/Home.vue"),
-      meta: { title: "一起开黑，让快乐发生" },
+      alias: "/players",
+      component: () => import("../views/Players.vue"),
+      meta: { title: "发现陪玩，预约你的下一局" },
     },
     {
       path: "/experiences/:category?",
       component: () => import("../views/Experiences.vue"),
       meta: { title: "探索多彩陪伴" },
-    },
-    {
-      path: "/players",
-      component: () => import("../views/Players.vue"),
-      meta: { title: "发现陪玩" },
     },
     {
       path: "/players/:id",
@@ -36,7 +32,7 @@ const router = createRouter({
     {
       path: "/apply",
       component: () => import("../views/Apply.vue"),
-      meta: { title: "成为陪玩", auth: true },
+      meta: { title: "申请成为陪玩" },
     },
     {
       path: "/orders",
@@ -88,6 +84,12 @@ const router = createRouter({
 router.beforeEach((to) => {
   document.title = (to.meta.title || "茉莉陪玩") + " · 茉莉陪玩";
   if (to.meta.auth && !auth.user)
+    return { path: "/login", query: { redirect: to.fullPath } };
+  if (
+    ["/", "/players"].includes(to.path) &&
+    to.query.favorites === "true" &&
+    !auth.user
+  )
     return { path: "/login", query: { redirect: to.fullPath } };
   if (to.meta.roles && !to.meta.roles.includes(auth.user?.role))
     return "/account";

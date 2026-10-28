@@ -19,23 +19,33 @@ const router = useRouter(),
   menuButton = ref(),
   accountMenu = ref();
 const publicLinks = [
-  ["/", "首页"],
+  ["/", "发现陪玩"],
   ["/experiences", "场景探索"],
-  ["/players", "发现陪玩"],
-  ["/apply", "成为陪玩"],
+  ["/orders", "我的订单"],
   ["/help", "帮助中心"],
 ];
-const personalLinks = computed(() => [
+const personalLinks = [
   ["/account", "个人中心"],
   ["/orders", "我的订单"],
+  ["/players?favorites=true", "我的收藏"],
+];
+const staffLinks = computed(() => [
   ...(auth.user?.role === "provider" ? [["/studio", "陪玩工作台"]] : []),
   ...(auth.user?.role === "admin" ? [["/admin", "管理后台"]] : []),
   ...(["support", "admin"].includes(auth.user?.role)
     ? [["/support", "客服工作台"]]
     : []),
 ]);
+const inStaffSpace = computed(() =>
+  staffLinks.value.some(([path]) => isCurrent(path)),
+);
+const contextLinks = computed(() =>
+  inStaffSpace.value ? staffLinks.value : personalLinks,
+);
 const inPersonalSpace = computed(
-  () => auth.user && personalLinks.value.some(([path]) => isCurrent(path)),
+  () =>
+    auth.user &&
+    (inStaffSpace.value || ["/account", "/orders"].some(isCurrent)),
 );
 const roleName = computed(
   () =>
@@ -45,7 +55,7 @@ const roleName = computed(
 );
 function isCurrent(path) {
   return path === "/"
-    ? route.path === "/"
+    ? route.path === "/" || route.path.startsWith("/players")
     : route.path === path || route.path.startsWith(path + "/");
 }
 function closeMenus() {
@@ -130,9 +140,7 @@ async function signOut() {
             :aria-current="isCurrent(path) ? 'page' : undefined"
             >{{ label }}</router-link
           >
-          <span v-if="auth.user" class="mobile-nav-heading"
-            >我的茉莉 · {{ roleName }}</span
-          >
+          <span v-if="auth.user" class="mobile-nav-heading">我的茉莉</span>
           <template v-if="auth.user">
             <router-link
               v-for="[path, label] in personalLinks"
@@ -171,6 +179,17 @@ async function signOut() {
                   >{{ label }}<ArrowUpRight :size="14"
                 /></router-link>
               </nav>
+              <div v-if="staffLinks.length" class="staff-menu">
+                <small>员工工作区</small>
+                <nav aria-label="员工导航">
+                  <router-link
+                    v-for="[path, label] in staffLinks"
+                    :key="path"
+                    :to="path"
+                    >{{ label }}<ArrowUpRight :size="14"
+                  /></router-link>
+                </nav>
+              </div>
               <button class="account-signout" @click="signOut">
                 <LogOut :size="16" />退出登录
               </button>
@@ -186,11 +205,12 @@ async function signOut() {
       <div v-if="inPersonalSpace" class="personal-bar">
         <div class="container personal-bar-inner">
           <span
-            >我的茉莉 <small>{{ roleName }}</small></span
+            >{{ inStaffSpace ? "员工工作区" : "我的茉莉" }}
+            <small v-if="inStaffSpace">{{ roleName }}</small></span
           >
           <nav aria-label="个人空间导航">
             <router-link
-              v-for="[path, label] in personalLinks"
+              v-for="[path, label] in contextLinks"
               :key="path"
               :to="path"
               :class="{ active: isCurrent(path) }"
@@ -221,8 +241,14 @@ async function signOut() {
           <div>
             <strong>一起玩</strong
             ><router-link to="/players">发现游戏搭子</router-link
-            ><router-link to="/apply">陪玩入驻</router-link
+            ><router-link to="/players?favorites=true">我的收藏</router-link
             ><router-link to="/orders">订单中心</router-link>
+          </div>
+          <div>
+            <strong>成为伙伴</strong
+            ><router-link to="/apply"
+              >申请成为陪玩<ArrowUpRight :size="12" /></router-link
+            ><span class="footer-partner-note">用你的擅长，陪伴更多热爱。</span>
           </div>
           <div>
             <strong>安心玩</strong
