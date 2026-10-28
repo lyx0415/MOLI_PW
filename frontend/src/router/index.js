@@ -3,7 +3,9 @@ import { auth } from "../lib/api.js";
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, saved) {
-    return saved || { top: 0 };
+    if (saved) return saved;
+    if (to.path === from.path && !to.hash) return false;
+    return { top: 0 };
   },
   routes: [
     {

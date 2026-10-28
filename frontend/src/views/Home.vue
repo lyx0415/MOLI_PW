@@ -67,6 +67,14 @@ onMounted(load);
         <p class="hero-description">
           一场尽兴的游戏，一位合拍的搭子。<br />在茉莉，找到你的快乐同频。
         </p>
+        <div class="hero-actions">
+          <router-link to="/players" class="button"
+            >寻找合拍搭子<ArrowUpRight :size="18"
+          /></router-link>
+          <router-link to="/experiences" class="text-link"
+            >探索生活场景<ArrowRight :size="17"
+          /></router-link>
+        </div>
         <form
           class="hero-search"
           @submit.prevent="
@@ -76,9 +84,9 @@ onMounted(load);
           <Search :size="19" /><input
             v-model="keyword"
             aria-label="搜索陪玩或游戏"
-            placeholder="想玩什么？找找你的游戏搭子"
-          /><button class="button" type="submit">
-            去发现<ArrowUpRight :size="17" />
+            placeholder="搜游戏、昵称，或一种喜欢的风格"
+          /><button class="hero-search-submit" type="submit">
+            搜索<ArrowRight :size="17" />
           </button>
         </form>
         <div class="hero-trust">
@@ -118,6 +126,36 @@ onMounted(load);
         <div class="art-cross">✳</div>
       </div>
     </section>
+    <section class="container home-experiences">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">01 / CHOOSE YOUR MOMENT</span>
+          <h2>今天，想怎么一起玩？</h2>
+          <p class="subtle">从线上默契到同城相聚，让喜欢的事有人一起。</p>
+        </div>
+        <router-link class="text-link" to="/experiences"
+          >探索全部场景<ArrowUpRight :size="18"
+        /></router-link>
+      </div>
+      <div class="home-scene-grid">
+        <router-link
+          v-for="(c, index) in site.categories"
+          :key="c.id"
+          :to="'/experiences/' + c.id"
+          class="home-scene"
+        >
+          <div class="home-scene-visual">
+            <SceneArt :category="c.id" /><span class="scene-index"
+              >0{{ index + 1 }}</span
+            ><span class="scene-open"><ArrowUpRight :size="17" /></span>
+          </div>
+          <strong>{{ c.name }}</strong
+          ><span>{{
+            c.mode === "online" ? "随时同频 · 线上相聚" : "走进生活 · 同城相伴"
+          }}</span>
+        </router-link>
+      </div>
+    </section>
     <section class="game-section">
       <div class="container">
         <div class="section-top">
@@ -146,7 +184,7 @@ onMounted(load);
     <section class="container recommendations">
       <div class="section-top">
         <div>
-          <span class="eyebrow">MEET YOUR NEXT TEAMMATE</span>
+          <span class="eyebrow">02 / MEET YOUR NEXT TEAMMATE</span>
           <h2>合拍的人，等你开场。</h2>
           <p class="subtle">选择喜欢的风格，预约一段轻松时光。</p>
         </div>
@@ -179,7 +217,7 @@ onMounted(load);
     </section>
     <section class="container how-section">
       <div class="how-heading">
-        <span class="eyebrow">A LITTLE GUIDE</span>
+        <span class="eyebrow">03 / A LITTLE GUIDE</span>
         <h2>快乐开局，<br />只需三步。</h2>
         <p>明晰的流程，安心的陪伴。</p>
       </div>
@@ -221,29 +259,6 @@ onMounted(load);
         {{ site.announcements[0].title }} · {{ site.announcements[0].content }}
       </p>
       <router-link to="/help"><ArrowUpRight :size="18" /></router-link>
-    </section>
-    <section class="container home-experiences">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">MORE THAN A GAME</span>
-          <h2>快乐不止一局，陪伴不止线上。</h2>
-        </div>
-        <router-link class="text-link" to="/experiences"
-          >探索全部场景<ArrowUpRight :size="18"
-        /></router-link>
-      </div>
-      <div class="home-scene-grid">
-        <router-link
-          v-for="c in site.categories"
-          :key="c.id"
-          :to="'/experiences/' + c.id"
-          class="home-scene"
-          ><SceneArt :category="c.id" /><strong>{{ c.name }}</strong
-          ><span>{{
-            c.mode === "online" ? "线上相聚" : "同城相伴"
-          }}</span></router-link
-        >
-      </div>
     </section>
   </div>
 </template>

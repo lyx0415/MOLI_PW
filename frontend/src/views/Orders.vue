@@ -54,6 +54,7 @@ onMounted(() => load());
         v-for="[value, label] in filters"
         :key="value"
         :class="{ active: status === value }"
+        :aria-pressed="status === value"
         @click="status = value"
       >
         {{ label }}

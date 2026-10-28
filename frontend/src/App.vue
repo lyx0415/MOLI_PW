@@ -1,14 +1,80 @@
 <script setup>
-import { onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { Menu, X, ArrowUpRight, UserRound, LogOut } from "lucide-vue-next";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import {
+  Menu,
+  X,
+  ArrowUpRight,
+  UserRound,
+  LogOut,
+  ChevronDown,
+} from "lucide-vue-next";
 import BrandMark from "./components/BrandMark.vue";
 import { auth, ui, logout } from "./lib/api.js";
 import { site, loadSite } from "./lib/site.js";
 const router = useRouter(),
-  menu = ref(false);
-onMounted(loadSite);
-router.afterEach(() => (menu.value = false));
+  route = useRoute(),
+  menu = ref(false),
+  header = ref(),
+  menuButton = ref(),
+  accountMenu = ref();
+const publicLinks = [
+  ["/", "首页"],
+  ["/experiences", "场景探索"],
+  ["/players", "发现陪玩"],
+  ["/apply", "成为陪玩"],
+  ["/help", "帮助中心"],
+];
+const personalLinks = computed(() => [
+  ["/account", "个人中心"],
+  ["/orders", "我的订单"],
+  ...(auth.user?.role === "provider" ? [["/studio", "陪玩工作台"]] : []),
+  ...(auth.user?.role === "admin" ? [["/admin", "管理后台"]] : []),
+  ...(["support", "admin"].includes(auth.user?.role)
+    ? [["/support", "客服工作台"]]
+    : []),
+]);
+const inPersonalSpace = computed(
+  () => auth.user && personalLinks.value.some(([path]) => isCurrent(path)),
+);
+const roleName = computed(
+  () =>
+    ({ customer: "客户", provider: "陪玩", support: "客服", admin: "管理员" })[
+      auth.user?.role
+    ],
+);
+function isCurrent(path) {
+  return path === "/"
+    ? route.path === "/"
+    : route.path === path || route.path.startsWith(path + "/");
+}
+function closeMenus() {
+  menu.value = false;
+  if (accountMenu.value) accountMenu.value.open = false;
+}
+function toggleMenu() {
+  menu.value = !menu.value;
+  if (menu.value && accountMenu.value) accountMenu.value.open = false;
+}
+function onEscape() {
+  if (menu.value) {
+    menu.value = false;
+    menuButton.value?.focus();
+  }
+  if (accountMenu.value?.open) {
+    accountMenu.value.open = false;
+    accountMenu.value.querySelector("summary")?.focus();
+  }
+}
+function onOutsideClick(event) {
+  if (!header.value?.contains(event.target)) closeMenus();
+}
+onMounted(() => {
+  loadSite();
+  document.addEventListener("pointerdown", onOutsideClick);
+});
+onUnmounted(() => document.removeEventListener("pointerdown", onOutsideClick));
+watch(() => route.fullPath, closeMenus);
 watch(
   () => auth.user,
   (user) => {
@@ -28,10 +94,11 @@ async function signOut() {
 </script>
 <template>
   <div class="site-shell">
+    <a class="skip-link" href="#main-content">跳转到主要内容</a>
     <div v-if="site.demo" class="demo-banner">
       演示环境 · 展示人物为示例插画，非真实陪玩资料；支付尚未配置时无法收款。
     </div>
-    <header class="site-header">
+    <header ref="header" class="site-header" @keydown.esc="onEscape">
       <div class="container header-inner">
         <router-link to="/" class="brand"
           ><BrandMark /><span
@@ -39,64 +106,100 @@ async function signOut() {
           ></router-link
         ><button
           class="mobile-menu icon-button"
-          @click="menu = !menu"
+          ref="menuButton"
+          @click="toggleMenu"
           :aria-expanded="menu"
+          aria-controls="main-navigation"
           aria-label="展开导航"
         >
           <X v-if="menu" /><Menu v-else />
         </button>
-        <nav class="main-nav" :class="{ open: menu }" aria-label="主导航">
-          <router-link to="/" exact-active-class="active">首页</router-link
-          ><router-link to="/experiences">场景探索</router-link
-          ><router-link to="/players">发现陪玩</router-link
-          ><router-link to="/apply"
-            >成为陪玩<ArrowUpRight :size="13" /></router-link
-          ><router-link to="/help">帮助中心</router-link
-          ><router-link v-if="auth.user" class="mobile-nav-item" to="/orders"
-            >我的订单</router-link
-          ><router-link
-            v-if="auth.user?.role === 'provider'"
-            class="mobile-nav-item"
-            to="/studio"
-            >陪玩工作台</router-link
-          ><router-link
-            v-if="auth.user?.role === 'admin'"
-            class="mobile-nav-item"
-            to="/admin"
-            >管理后台</router-link
-          ><router-link
-            v-if="['support', 'admin'].includes(auth.user?.role)"
-            class="mobile-nav-item"
-            to="/support"
-            >客服工作台</router-link
-          ><router-link v-if="auth.user" class="mobile-nav-item" to="/account"
-            >个人中心</router-link
+        <nav
+          id="main-navigation"
+          class="main-nav"
+          :class="{ open: menu }"
+          aria-label="主导航"
+        >
+          <router-link
+            v-for="[path, label] in publicLinks"
+            :key="path"
+            :to="path"
+            active-class=""
+            exact-active-class=""
+            :class="{ active: isCurrent(path) }"
+            :aria-current="isCurrent(path) ? 'page' : undefined"
+            >{{ label }}</router-link
           >
+          <span v-if="auth.user" class="mobile-nav-heading"
+            >我的茉莉 · {{ roleName }}</span
+          >
+          <template v-if="auth.user">
+            <router-link
+              v-for="[path, label] in personalLinks"
+              :key="path"
+              :to="path"
+              class="mobile-nav-item"
+              :class="{ active: isCurrent(path) }"
+              :aria-current="isCurrent(path) ? 'page' : undefined"
+              >{{ label }}</router-link
+            >
+          </template>
         </nav>
         <div class="header-account" v-if="auth.user">
-          <router-link to="/orders">我的订单</router-link
-          ><router-link v-if="auth.user.role === 'provider'" to="/studio"
-            >工作台</router-link
-          ><router-link v-if="auth.user.role === 'admin'" to="/admin"
-            >管理后台</router-link
-          ><router-link
-            v-if="['support', 'admin'].includes(auth.user.role)"
-            to="/support"
-            >客服工作台</router-link
-          ><router-link to="/account" class="account-chip"
-            ><UserRound :size="16" /><span>{{
-              auth.user.name
-            }}</span></router-link
-          ><button class="icon-button" aria-label="退出登录" @click="signOut">
-            <LogOut :size="17" />
-          </button>
+          <details
+            ref="accountMenu"
+            class="account-menu"
+            @toggle="if ($event.target.open) menu = false;"
+          >
+            <summary
+              class="account-chip"
+              :aria-label="'打开账号菜单：' + auth.user.name"
+            >
+              <UserRound :size="16" /><span>{{ auth.user.name }}</span
+              ><ChevronDown :size="14" />
+            </summary>
+            <div class="account-popover">
+              <div class="account-menu-label">
+                我的茉莉 <small>{{ roleName }}</small>
+              </div>
+              <nav aria-label="账号导航">
+                <router-link
+                  v-for="[path, label] in personalLinks"
+                  :key="path"
+                  :to="path"
+                  :aria-current="isCurrent(path) ? 'page' : undefined"
+                  >{{ label }}<ArrowUpRight :size="14"
+                /></router-link>
+              </nav>
+              <button class="account-signout" @click="signOut">
+                <LogOut :size="16" />退出登录
+              </button>
+            </div>
+          </details>
         </div>
         <router-link v-else to="/login" class="button header-login"
           >登录 / 注册<ArrowUpRight :size="15"
         /></router-link>
       </div>
     </header>
-    <main id="main-content">
+    <main id="main-content" tabindex="-1">
+      <div v-if="inPersonalSpace" class="personal-bar">
+        <div class="container personal-bar-inner">
+          <span
+            >我的茉莉 <small>{{ roleName }}</small></span
+          >
+          <nav aria-label="个人空间导航">
+            <router-link
+              v-for="[path, label] in personalLinks"
+              :key="path"
+              :to="path"
+              :class="{ active: isCurrent(path) }"
+              :aria-current="isCurrent(path) ? 'page' : undefined"
+              >{{ label }}</router-link
+            >
+          </nav>
+        </div>
+      </div>
       <div v-if="site.error" class="container alert error">
         暂时无法连接服务。<button class="text-button" @click="loadSite">
           重新连接

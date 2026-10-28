@@ -1,11 +1,12 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   Search,
   SlidersHorizontal,
   ArrowUpRight,
   Gamepad2,
+  X,
 } from "lucide-vue-next";
 import ProviderCard from "../components/ProviderCard.vue";
 import Pagination from "../components/Pagination.vue";
@@ -13,22 +14,80 @@ import { api, auth, notify } from "../lib/api.js";
 import { site } from "../lib/site.js";
 const route = useRoute(),
   router = useRouter(),
-  game = ref(String(route.query.game || "")),
-  category = ref(String(route.query.category || "")),
-  mode = ref(String(route.query.mode || "")),
-  city = ref(String(route.query.city || "")),
   keyword = ref(String(route.query.keyword || "")),
-  sort = ref("popular"),
-  available = ref(false),
-  maxPrice = ref(""),
-  onlySaved = ref(false),
   favorites = ref([]),
   data = ref({ items: [], total: 0, page: 1, size: 12 }),
   loading = ref(true),
   failed = ref(false);
 let timer,
   request = 0;
-async function load(page = 1) {
+function setFilters(changes, resetPage = true) {
+  const query = {
+    ...route.query,
+    ...(resetPage ? { page: undefined } : {}),
+    ...changes,
+  };
+  for (const key of Object.keys(query)) {
+    if (query[key] === "" || query[key] === false || query[key] == null)
+      delete query[key];
+  }
+  return router.replace({ query });
+}
+function textFilter(key, fallback = "") {
+  return computed({
+    get: () => String(route.query[key] || fallback),
+    set: (value) =>
+      setFilters({ [key]: value === fallback ? undefined : value }),
+  });
+}
+const game = textFilter("game"),
+  category = textFilter("category"),
+  mode = textFilter("mode"),
+  city = textFilter("city"),
+  sort = textFilter("sort", "popular"),
+  maxPrice = textFilter("maxPrice"),
+  available = computed({
+    get: () => route.query.available === "true",
+    set: (value) => setFilters({ available: value ? "true" : undefined }),
+  }),
+  onlySaved = computed({
+    get: () => Boolean(auth.user) && route.query.favorites === "true",
+    set: (value) => setFilters({ favorites: value ? "true" : undefined }),
+  });
+const activeFilters = computed(() =>
+  [
+    game.value && ["game", game.value],
+    category.value && [
+      "category",
+      site.categories.find((c) => c.id === category.value)?.name ||
+        category.value,
+    ],
+    mode.value && ["mode", mode.value === "online" ? "线上服务" : "线下服务"],
+    city.value && ["city", city.value],
+    route.query.keyword && ["keyword", String(route.query.keyword)],
+    maxPrice.value && ["maxPrice", `每小时 ${maxPrice.value} 元以内`],
+    available.value && ["available", "可预约"],
+    onlySaved.value && ["favorites", "已收藏"],
+  ].filter(Boolean),
+);
+function clearFilters() {
+  clearTimeout(timer);
+  keyword.value = "";
+  router.replace({ query: {} });
+}
+function changeMode(event) {
+  setFilters({ mode: event.target.value, category: "", game: "", city: "" });
+}
+function changeCategory(event) {
+  setFilters({
+    category: event.target.value,
+    game: "",
+    ...(event.target.value === "esports" ? { city: "" } : {}),
+  });
+}
+async function load() {
+  clearTimeout(timer);
+  keyword.value = String(route.query.keyword || "");
   const n = ++request;
   loading.value = true;
   failed.value = false;
@@ -36,12 +95,12 @@ async function load(page = 1) {
     const result = await api(
       "/providers?" +
         new URLSearchParams({
-          page,
+          page: Math.max(1, Number(route.query.page) || 1),
           game: game.value,
           category: category.value,
           mode: mode.value,
           city: city.value.trim(),
-          keyword: keyword.value,
+          keyword: String(route.query.keyword || ""),
           sort: sort.value,
           favorites: String(onlySaved.value),
           available: available.value,
@@ -56,27 +115,17 @@ async function load(page = 1) {
     if (n === request) loading.value = false;
   }
 }
-watch([game, category, mode, city, sort, available, maxPrice, onlySaved], () =>
-  load(),
-);
-watch(
-  () => [route.query.category, route.query.mode, route.query.city],
-  ([c, m, t]) => {
-    category.value = String(c || "");
-    mode.value = String(m || "");
-    city.value = String(t || "");
-  },
-);
+watch(() => route.fullPath, load, { immediate: true });
 watch(keyword, () => {
   clearTimeout(timer);
-  timer = setTimeout(() => load(), 300);
+  if (keyword.value === String(route.query.keyword || "")) return;
+  timer = setTimeout(() => setFilters({ keyword: keyword.value.trim() }), 300);
 });
-watch(
-  () => route.query.game,
-  (value) => (game.value = String(value || "")),
-);
+onUnmounted(() => {
+  clearTimeout(timer);
+  request++;
+});
 onMounted(async () => {
-  load();
   if (auth.user)
     try {
       favorites.value = await api("/favorites");
@@ -94,6 +143,7 @@ async function favorite(p) {
       ? [...favorites.value, p.id]
       : favorites.value.filter((x) => x !== p.id);
     notify(saved ? "已收藏" : "已取消收藏");
+    if (onlySaved.value) load();
   } catch {}
 }
 </script>
@@ -109,7 +159,11 @@ async function favorite(p) {
         ><Gamepad2 :size="22" />PLAY WELL. FEEL GOOD.</span
       >
     </div>
-    <section class="catalog-filter panel">
+    <section class="catalog-filter panel" aria-label="筛选陪玩">
+      <div class="filter-heading">
+        <span><SlidersHorizontal :size="16" />找到你的同频</span
+        ><small>按场景、预算与偏好筛选</small>
+      </div>
       <div class="catalog-search">
         <Search :size="19" /><input
           v-model="keyword"
@@ -119,27 +173,14 @@ async function favorite(p) {
       </div>
       <div class="experience-filter-row">
         <label class="field"
-          >服务方式<select
-            v-model="mode"
-            @change="
-              category = '';
-              game = '';
-              city = '';
-            "
-          >
+          >服务方式<select :value="mode" @change="changeMode">
             <option value="">线上与线下</option>
             <option value="online">线上服务</option>
             <option value="offline">线下服务</option>
           </select></label
         >
         <label class="field"
-          >服务场景<select
-            v-model="category"
-            @change="
-              game = '';
-              if (category === 'esports') city = '';
-            "
-          >
+          >服务场景<select :value="category" @change="changeCategory">
             <option value="">全部场景</option>
             <option
               v-for="c in site.categories.filter(
@@ -163,12 +204,19 @@ async function favorite(p) {
       <div
         v-if="mode !== 'offline' && (!category || category === 'esports')"
         class="filter-tabs game-filters"
+        aria-label="游戏筛选"
       >
-        <button :class="{ active: !game }" @click="game = ''">全部游戏</button
+        <button
+          :class="{ active: !game }"
+          :aria-pressed="!game"
+          @click="game = ''"
+        >
+          全部游戏</button
         ><button
           v-for="g in site.games"
           :key="g"
           :class="{ active: game === g }"
+          :aria-pressed="game === g"
           @click="game = g"
         >
           {{ g }}
@@ -198,10 +246,28 @@ async function favorite(p) {
         >
       </div>
     </section>
-    <div class="catalog-count">
-      发现 <strong>{{ data.total }}</strong> 位陪玩<span
-        >评价与订单数据来自已完成的服务</span
+    <div
+      v-if="activeFilters.length"
+      class="active-filters"
+      aria-label="已选筛选条件"
+    >
+      <span>已选</span
+      ><button
+        v-for="[key, label] in activeFilters"
+        :key="key"
+        @click="setFilters({ [key]: '' })"
+        :aria-label="'移除筛选：' + label"
       >
+        {{ label }}<X :size="13" />
+      </button>
+      <button class="clear-filters" @click="clearFilters">清除全部</button>
+    </div>
+    <div class="catalog-count" role="status" aria-live="polite">
+      <template v-if="loading">正在寻找合拍的搭子…</template>
+      <template v-else-if="failed">加载暂时遇到问题，请重试</template>
+      <template v-else
+        >发现 <strong>{{ data.total }}</strong> 位陪玩</template
+      ><span>评价与订单数据来自已完成的服务</span>
     </div>
     <div v-if="loading" class="provider-grid">
       <div class="skeleton card-skeleton" v-for="i in 6" :key="i" />
@@ -219,21 +285,7 @@ async function favorite(p) {
       <Gamepad2 :size="38" />
       <h3>暂时没有符合条件的搭子</h3>
       <p>试试其他场景或城市，或调整搜索和预算。</p>
-      <button
-        class="button secondary"
-        @click="
-          game = '';
-          category = '';
-          mode = '';
-          city = '';
-          keyword = '';
-          maxPrice = '';
-          available = false;
-          onlySaved = false;
-        "
-      >
-        清除筛选
-      </button>
+      <button class="button secondary" @click="clearFilters">清除筛选</button>
     </div>
     <div v-else class="provider-grid">
       <ProviderCard
@@ -246,7 +298,11 @@ async function favorite(p) {
         @favorite="favorite"
       />
     </div>
-    <Pagination :page="data.page" :total="data.total" @change="load" />
+    <Pagination
+      :page="data.page"
+      :total="data.total"
+      @change="setFilters({ page: $event }, false)"
+    />
     <div class="catalog-join">
       <p>你也是一位有温度的游戏高手？</p>
       <router-link to="/apply" class="text-link"

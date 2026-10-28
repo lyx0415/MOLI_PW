@@ -1,15 +1,17 @@
 :root {
   font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  color: #253e32;
-  background: #f7f6f0;
+  color: #243c30;
+  background: #f8f7f2;
   font-synthesis: none;
-  --ink: #253e32;
-  --muted: #748074;
-  --green: #365d45;
-  --light: #e7eddf;
-  --line: #e2e5da;
-  --paper: #fffef9;
+  --ink: #243c30;
+  --muted: #637064;
+  --green: #315a43;
+  --light: #e9eee3;
+  --line: #dde3d8;
+  --paper: #fffefb;
   --radius: 18px;
+  --shadow: 0 16px 42px #263c300a;
+  --header-height: 84px;
 }
 * {
   box-sizing: border-box;

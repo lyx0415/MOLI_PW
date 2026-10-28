@@ -230,6 +230,7 @@ async function toggleAnnouncement(row) {
           v-for="[value, label, icon] in tabs"
           :key="value"
           :class="{ active: tab === value }"
+          :aria-pressed="tab === value"
           @click="tab = value"
         >
           <component :is="icon" :size="18" />{{ label }}

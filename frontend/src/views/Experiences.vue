@@ -108,6 +108,25 @@ async function favorite(p) {
       <router-link class="button" to="/experiences">返回场景探索</router-link>
     </div>
     <template v-else>
+      <nav class="scene-navigation" aria-label="服务场景导航">
+        <router-link
+          to="/experiences"
+          :class="{ active: !scene }"
+          :aria-current="!scene ? 'page' : undefined"
+          >全部场景</router-link
+        >
+        <router-link
+          v-for="c in site.categories"
+          :key="c.id"
+          :to="{
+            path: '/experiences/' + c.id,
+            query: c.mode === 'offline' && city ? { city } : {},
+          }"
+          :class="{ active: scene?.id === c.id }"
+          :aria-current="scene?.id === c.id ? 'page' : undefined"
+          >{{ c.name }}</router-link
+        >
+      </nav>
       <router-link v-if="scene" class="back-link" to="/experiences"
         ><ArrowLeft :size="16" />全部服务场景</router-link
       >
